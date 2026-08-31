@@ -1,0 +1,22 @@
+# Ambientes virtuais e dependências
+.venv/
+.venv_*/
+
+# Caches de ferramentas e builds
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.coverage
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+
+# Logs e arquivos temporários de scratch
+*.log
+scratch/
+scripts/temp_*
