@@ -114,6 +114,8 @@ O `anifuse` consome o motor gráfico `anicrop`. Sempre que precisar consultar m�
 - **Camadas & EditLayer (`Layer`, `GroupLayer`):** [docs/anicrop/layer.md](file:///home/gui/python/anifuse/docs/anicrop/layer.md)
 - **Geometria 2D & Álgebra Espacial (`Region`, `Span`, `Point`):** [docs/anicrop/spatial.md](file:///home/gui/python/anifuse/docs/anicrop/spatial.md)
 - **Composição & Mesclagem (`merge`, `flatten`, `bake`):** [docs/anicrop/composition.md](file:///home/gui/python/anifuse/docs/anicrop/composition.md)
+- **Modos de Mesclagem & Fusão de Pixels (`BlendMode`, `blend.py`):** [docs/anicrop/blend.md](file:///home/gui/python/anifuse/docs/anicrop/blend.md)
 - **Imagens, LOD & Subsistema I/O (`Image`, `PyvipsBackend`):** [docs/anicrop/image.md](file:///home/gui/python/anifuse/docs/anicrop/image.md)
 - **Projeção de Viewport & Câmera:** [docs/anicrop/viewport.md](file:///home/gui/python/anifuse/docs/anicrop/viewport.md)
+
 
