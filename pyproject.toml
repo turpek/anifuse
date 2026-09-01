@@ -12,6 +12,7 @@ dependencies = [
     "numpy>=2.0.0",
     "opencv-python>=4.10.0",
     "loguru>=0.7.0",
+    "pillow>=12.3.0",
 ]
 
 [project.optional-dependencies]
@@ -28,6 +29,11 @@ anicrop = { git = "https://github.com/turpek/anicrop.git", branch = "main" }
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.5",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/anifuse"]
