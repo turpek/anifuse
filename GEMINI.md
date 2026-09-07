@@ -36,7 +36,9 @@
   - `numpy>=2.0.0`
   - `opencv-python>=4.10.0`
   - `loguru>=0.7.0`
-  - `pytest>=8.0.0`, `pytest-cov`, `ruff`, `mypy`.
+  - `pillow>=12.3.0`
+- **Ferramentas de Desenvolvimento e Qualidade:**
+  - `autopep8>=2.3.2`, `ruff>=0.9.0`, `mypy>=1.10.0`, `pytest>=8.0.0`, `pytest-cov>=5.0.0`.
 
 ---
 
@@ -56,12 +58,15 @@ src/anifuse/
 
 ## 5. Testes, Qualidade e Regras de Interação com a IA (GEMINI)
 
-- **Desenvolvimento Orientado a Testes (TDD):** A suíte de testes (`pytest`) é a fonte de verdade absoluta para validação de algoritmos de alinhamento e orquestração.
-- **Formatação Automática (ruff format):** Sempre que a IA for autorizada a alterar, criar ou refatorar qualquer arquivo Python (`.py`), DEVE obrigatoriamente executar:
+- **Desenvolvimento Orientado a Testes (TDD):** A suíte de testes (`pytest`) é a fonte de verdade absoluta para validação de algoritmos de alinhamento e orquestração. A IA deve propor e executar cenários de teste antes/durante refatorações.
+- **Qualidade e Formatação Automática (ruff check & autopep8):** Sempre que a IA for autorizada a alterar, criar ou refatorar qualquer arquivo Python (`.py`), DEVE obrigatoriamente executar lint com auto-fix e formatação via autopep8 no diretório afetado:
   ```bash
-  uv run ruff format <arquivo.py>
+  uv run ruff check <diretório> --fix && uv run autopep8 --in-place --recursive --max-line-length 89 --ignore E501,E402,W503,W504 <diretório>
   ```
 - **Arquivos Temporários e Scratch:** Scripts de teste temporários ou de debug DEVEM ser gerados em `scratch/` ou `scripts/`, nunca na raiz do projeto.
+- **Imports Estritamente no Top-Level:** Todo e qualquer `import` ou `from ... import ...` DEVE residir obrigatoriamente no topo do arquivo (`top-level`).
+  - É **estritamente proibido** colocar declarações de `import` dentro de funções, métodos ou blocos de controle de fluxo (prevenindo violações da regra `PLC0415` do Ruff).
+  - Para anotações de tipo que poderiam introduzir dependências circulares em tempo de execução, utilize obrigatoriamente o bloco `if TYPE_CHECKING:` no topo do arquivo acompanhado de `from __future__ import annotations`.
 
 ### 5.1. Diretrizes Estritas para Criação de Testes (Pytest):
 1. **Docstring Concisa:** Exatamente 1 linha limpa na primeira linha de cada função de teste.
@@ -69,6 +74,7 @@ src/anifuse/
 3. **Parametrização Declarativa (`@pytest.mark.parametrize`):** Variações de entrada e expectativa devem ser expressas como dados na tabela de parâmetros com IDs descritivos (`id="..."`).
 4. **Helpers de Dados Dedicados:** Usar geradores sintéticos de frames com movimento controlado para evitar testes lentos ou não-determinísticos.
 5. **Asserts Coesos:** Múltiplos asserts são permitidos somente quando pertencerem ao mesmo objeto sob teste e validarem facetas complementares do mesmo resultado.
+6. **Casos de Borda Isolados:** Casos específicos (ex: frames sem movimento, falhas de correlação ou parâmetros nulos) devem ser testes dedicados, nunca misturados com `if` dentro de tabelas genéricas.
 
 ### 5.2. Padrão de Commits (Conventional Commits em Português):
 - **Estrutura básica:**
@@ -86,6 +92,23 @@ src/anifuse/
   - `refactor`: refatoração sem alterar funcionalidade
   - `test`: testes
   - `chore`: tarefas de manutenção/configuração
+- **Corpo do commit (quando usar):**
+  - Explique o porquê, não apenas o que foi feito.
+  - Responder, se possível:
+    - Qual era o problema?
+    - Por que essa solução foi escolhida?
+    - Existe impacto ou efeito colateral?
+
+### 5.2.1. Separação Estrita de Commits (Produção vs. Dev-Only):
+- **Regra Fundamental:** É estritamente proibido misturar arquivos de produção com arquivos exclusivos de desenvolvimento em um mesmo commit.
+- **Commits de Produção (Core / Release):**
+  - **Arquivos:** `src/`, `tests/`, `README.md`, `pyproject.toml`, `uv.lock`, `Makefile`, `assets/`.
+  - **Prefixos:** `feat:`, `fix:`, `refactor:`, `perf:`, `test:`, `style:`.
+  - **Objetivo:** Manter a branch `main` e o changelog automático do `make sync-main` limpos, rastreáveis e focados no motor.
+- **Commits de Desenvolvimento (Ambiente / Metadados / Benchmarks):**
+  - **Arquivos:** `GEMINI.md`, `docs/` (guias técnicos e documentação interna), `benchmarks/`, `planos/`, `scratch/`, `scripts/`.
+  - **Prefixos:** `docs(dev):`, `bench:`, `chore(dev):`, `docs(plano):`.
+  - **Objetivo:** Preservar a rastreabilidade de instruções da IA, planos de refatoração e métricas de estresse na `dev` sem contaminar os commits de produto.
 
 ---
 
@@ -108,15 +131,19 @@ src/anifuse/
 O `anifuse` consome o motor gráfico `anicrop`. Sempre que precisar consultar métodos, assinaturas de classes, matrizes afins e tipos do `anicrop`, consulte a documentação local espelhada em `docs/anicrop/`:
 
 - **Fachada `Document` & `Viewer`:** [docs/anicrop/anicrop_guide.md](file:///home/gui/python/anifuse/docs/anicrop/anicrop_guide.md)
+- **Operações Espaciais & Layout (`pin`, `anchor_point`, `fit`, `align`, `fit_content`):** [docs/anicrop/layout.md](file:///home/gui/python/anifuse/docs/anicrop/layout.md)
 - **Transformações & Matrizes 3x3 (`Composer` / `Transform`):** [docs/anicrop/transform.md](file:///home/gui/python/anifuse/docs/anicrop/transform.md)
-- **Operações Espaciais & Layout (`fit`, `align`):** [docs/anicrop/layout.md](file:///home/gui/python/anifuse/docs/anicrop/layout.md)
 - **Manipulação de Conteúdo (`crop`, `resize`, `fit`):** [docs/anicrop/content.md](file:///home/gui/python/anifuse/docs/anicrop/content.md)
-- **Camadas & EditLayer (`Layer`, `GroupLayer`):** [docs/anicrop/layer.md](file:///home/gui/python/anifuse/docs/anicrop/layer.md)
+- **Camadas & EditLayer (`BaseLayer`, `Layer`, `GroupLayer`, `EditLayer`):** [docs/anicrop/layer.md](file:///home/gui/python/anifuse/docs/anicrop/layer.md)
 - **Geometria 2D & Álgebra Espacial (`Region`, `Span`, `Point`):** [docs/anicrop/spatial.md](file:///home/gui/python/anifuse/docs/anicrop/spatial.md)
-- **Composição & Mesclagem (`merge`, `flatten`, `bake`):** [docs/anicrop/composition.md](file:///home/gui/python/anifuse/docs/anicrop/composition.md)
+- **Contêineres & Protocolo de Árvore (`LayerStack`, `GroupLayer`, `NodeContainerProtocol`):** [docs/anicrop/container.md](file:///home/gui/python/anifuse/docs/anicrop/container.md)
+- **Composição & Mesclagem (`merge`, `flatten`, `bake`, `LayerComposition`):** [docs/anicrop/composition.md](file:///home/gui/python/anifuse/docs/anicrop/composition.md)
 - **Modos de Mesclagem & Fusão de Pixels (`BlendMode`, `blend.py`):** [docs/anicrop/blend.md](file:///home/gui/python/anifuse/docs/anicrop/blend.md)
-- **Imagens, LOD & Subsistema I/O (`Image`, `PyvipsBackend`):** [docs/anicrop/image.md](file:///home/gui/python/anifuse/docs/anicrop/image.md)
+- **Imagens, LOD & Subsistema I/O (`Image`, `PyvipsBackend`, `OpenCVBackend`):** [docs/anicrop/image.md](file:///home/gui/python/anifuse/docs/anicrop/image.md)
 - **Projeção de Viewport & Câmera:** [docs/anicrop/viewport.md](file:///home/gui/python/anifuse/docs/anicrop/viewport.md)
+- **Sistema de Histórico & Undo/Redo (`GlobalHistory`, `ActionPolicy`, `MacroCommand`):** [docs/anicrop/history.md](file:///home/gui/python/anifuse/docs/anicrop/history.md)
+- **Infraestrutura Reativa & Proxies (`ProxyLayer`, `GroupProxy`, `ProxyRegistry`):** [docs/anicrop/proxy.md](file:///home/gui/python/anifuse/docs/anicrop/proxy.md)
+- **Métricas de Performance & Benchmarks:** [docs/anicrop/benchmark.md](file:///home/gui/python/anifuse/docs/anicrop/benchmark.md)
 
 ---
 
