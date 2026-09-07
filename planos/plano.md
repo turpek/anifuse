@@ -10,7 +10,7 @@ Este documento centraliza todos os objetivos arquiteturais, otimizações e o pr
 - [x] 2. Subsistema de máscaras sem cópia (`MaskView`: Default, Static, Sequence, Dynamic, Composite).
 - [x] 3. Estimadores de movimento e rotação via ORB e MODA (`OrbTranslationEstimator`, `OrbTransformEstimator`).
 - [x] 4. Políticas de busca de janelas ativas (`Section`, `CrossSections`, `AdaptiveViewPolicy`).
-- [x] 5. Handlers de transformação geométrica em camadas do anicrop (`RotationHandler`, `ScaleHandler`, `TranslationHandler`).
+- [x] 5. Handlers de transformação geométrica em camadas do anicrop (`RotationHandler`, `ScaleHandler`, `TranslationHandler`, `HorizontalTranslationHandler`, `VerticalTranslationHandler`).
 - [x] 6. Subsistema de leitura de imagens (`PathResolver`, `ReadStrategy`, `ImageSequenceReader`).
 - [x] 7. Orquestrador de costura e composição de cena (`SceneStitcher`, `FrameAccumulator`, `StackOrder`).
 - [ ] 8. Subsistema de leitura de vídeo (integração com primitivas do `GPlayer`).
