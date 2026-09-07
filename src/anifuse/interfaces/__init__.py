@@ -9,6 +9,12 @@ from anifuse.interfaces.reader import (
     PathResolver,
     ReadStrategy,
 )
+from anifuse.interfaces.stitcher import (
+    FrameAccumulator,
+    ProgressCallback,
+    StackOrder,
+    Stitcher,
+)
 from anifuse.interfaces.view_policy import (
     AlignmentError,
     AlignmentResult,
@@ -21,12 +27,16 @@ __all__ = [
     "AlignmentResult",
     "Estimator",
     "Frame",
+    "FrameAccumulator",
     "FrameReader",
     "MaskView",
     "MotionEstimate",
     "PathResolver",
+    "ProgressCallback",
     "ReadStrategy",
     "Section",
+    "StackOrder",
+    "Stitcher",
     "TransformHandler",
     "ViewPolicy",
 ]
