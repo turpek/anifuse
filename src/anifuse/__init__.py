@@ -9,8 +9,6 @@ from anifuse.accumulator import (
 from anifuse.config import config
 from anifuse.handlers import (
     HorizontalTranslationHandler,
-    RotationHandler,
-    ScaleHandler,
     TranslationHandler,
     VerticalTranslationHandler,
 )
@@ -74,8 +72,6 @@ __all__ = [
     "PathResolver",
     "ProgressCallback",
     "ReadStrategy",
-    "RotationHandler",
-    "ScaleHandler",
     "SceneStitcher",
     "Section",
     "SequenceMaskView",

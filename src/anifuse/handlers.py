@@ -13,52 +13,6 @@ if TYPE_CHECKING:
     from anifuse.interfaces.view_policy import AlignmentResult
 
 
-class RotationHandler(TransformHandler):
-    """Applies in-plane camera rotation to the target layer if exceeding threshold."""
-
-    def __init__(
-        self,
-        threshold: float | None = None,
-        pivot_x: float = 0.0,
-        pivot_y: float = 0.0,
-    ) -> None:
-        """Initialize handler with rotation deadzone threshold and pivot points."""
-        self.threshold = config.rotate_threshold if threshold is None else threshold
-        self.pivot_x = pivot_x
-        self.pivot_y = pivot_y
-
-    def apply(self, target: Layer, alignment: AlignmentResult) -> None:
-        """Rotate target layer around pivot by counteracting estimated camera angle."""
-        angle = alignment.motion.angle
-        if abs(angle) > self.threshold:
-            target.transform.rotate(
-                -angle, pivot_x=self.pivot_x, pivot_y=self.pivot_y
-            )
-
-
-class ScaleHandler(TransformHandler):
-    """Applies inverse zoom/scale transformation to the target layer if exceeding threshold."""
-
-    def __init__(
-        self,
-        threshold: float | None = None,
-        pivot_x: float = 0.0,
-        pivot_y: float = 0.0,
-    ) -> None:
-        """Initialize handler with scale deadzone threshold and pivot points."""
-        self.threshold = config.scale_threshold if threshold is None else threshold
-        self.pivot_x = pivot_x
-        self.pivot_y = pivot_y
-
-    def apply(self, target: Layer, alignment: AlignmentResult) -> None:
-        """Scale target layer around pivot by counteracting estimated camera zoom."""
-        scale = alignment.motion.scale
-        if abs(1.0 - scale) > self.threshold and scale > 0:
-            target.transform.scale(
-                1.0 / scale, 1.0 / scale, pivot_x=self.pivot_x, pivot_y=self.pivot_y
-            )
-
-
 class TranslationHandler(TransformHandler):
     """Translates target layer to aligned canvas coordinates compensating for AABB rotation offsets."""
 
