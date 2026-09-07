@@ -10,7 +10,6 @@ import numpy as np
 from anicrop.enums import ImageFormat, InterpMode
 from anicrop.image import Image
 
-from anifuse.config import config
 from anifuse.interfaces import Estimator, MotionEstimate
 
 
@@ -101,15 +100,13 @@ class _BaseOrbEstimator(Estimator):
         distance_threshold: float = 40.0,
         nbest: int = 40,
         translation_metric: Callable[[np.ndarray], tuple[float, float]] = discrete_mode,
-        fast_threshold: int | None = None,
+        fast_threshold: int = 10,
     ) -> None:
         self.max_features = max_features
         self.distance_threshold = distance_threshold
         self.nbest = nbest
         self.translation_metric = translation_metric
-        self.fast_threshold = (
-            config.fast_threshold if fast_threshold is None else fast_threshold
-        )
+        self.fast_threshold = fast_threshold
 
         self._orb = cv2.ORB_create(  # type: ignore[attr-defined]
             nfeatures=max_features,
@@ -171,7 +168,7 @@ class OrbTranslationEstimator(_BaseOrbEstimator):
         distance_threshold: float = 40.0,
         nbest: int = 40,
         translation_metric: Callable[[np.ndarray], tuple[float, float]] = discrete_mode,
-        fast_threshold: int | None = None,
+        fast_threshold: int = 10,
     ) -> None:
         super().__init__(
             max_features=max_features,
@@ -223,9 +220,9 @@ class OrbTransformEstimator(_BaseOrbEstimator):
         nbest: int = 40,
         translation_metric: Callable[[np.ndarray], tuple[float, float]] = discrete_mode,
         interp: InterpMode = InterpMode.LANCZOS,
-        rotate_threshold: float | None = None,
-        scale_threshold: float | None = None,
-        fast_threshold: int | None = None,
+        rotate_threshold: float = 0.10,
+        scale_threshold: float = 0.0010,
+        fast_threshold: int = 10,
     ) -> None:
         super().__init__(
             max_features=max_features,
@@ -235,16 +232,8 @@ class OrbTransformEstimator(_BaseOrbEstimator):
             fast_threshold=fast_threshold,
         )
         self.interp = interp
-        self.rotate_threshold = (
-            config.rotate_threshold
-            if rotate_threshold is None
-            else rotate_threshold
-        )
-        self.scale_threshold = (
-            config.scale_threshold
-            if scale_threshold is None
-            else scale_threshold
-        )
+        self.rotate_threshold = rotate_threshold
+        self.scale_threshold = scale_threshold
 
     def estimate(
         self,
@@ -363,9 +352,9 @@ class OrbRotationEstimator(_BaseOrbEstimator):
         nbest: int = 40,
         translation_metric: Callable[[np.ndarray], tuple[float, float]] = discrete_mode,
         interp: InterpMode = InterpMode.LANCZOS,
-        rotate_threshold: float | None = None,
-        scale_threshold: float | None = None,
-        fast_threshold: int | None = None,
+        rotate_threshold: float = 0.10,
+        scale_threshold: float = 0.0010,
+        fast_threshold: int = 10,
     ) -> None:
         super().__init__(
             max_features=max_features,
@@ -375,16 +364,8 @@ class OrbRotationEstimator(_BaseOrbEstimator):
             fast_threshold=fast_threshold,
         )
         self.interp = interp
-        self.rotate_threshold = (
-            config.rotate_threshold
-            if rotate_threshold is None
-            else rotate_threshold
-        )
-        self.scale_threshold = (
-            config.scale_threshold
-            if scale_threshold is None
-            else scale_threshold
-        )
+        self.rotate_threshold = rotate_threshold
+        self.scale_threshold = scale_threshold
 
     def estimate(
         self,
@@ -492,8 +473,8 @@ class OrbScaleEstimator(_BaseOrbEstimator):
         nbest: int = 40,
         translation_metric: Callable[[np.ndarray], tuple[float, float]] = discrete_mode,
         interp: InterpMode = InterpMode.LANCZOS,
-        scale_threshold: float | None = None,
-        fast_threshold: int | None = None,
+        scale_threshold: float = 0.0010,
+        fast_threshold: int = 10,
     ) -> None:
         super().__init__(
             max_features=max_features,
@@ -503,11 +484,7 @@ class OrbScaleEstimator(_BaseOrbEstimator):
             fast_threshold=fast_threshold,
         )
         self.interp = interp
-        self.scale_threshold = (
-            config.scale_threshold
-            if scale_threshold is None
-            else scale_threshold
-        )
+        self.scale_threshold = scale_threshold
 
     def estimate(
         self,

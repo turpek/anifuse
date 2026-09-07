@@ -92,6 +92,7 @@ def test_batched_read_strategy_yields_all_frames_across_batches(
 
     assert len(frames) == 3
     assert [f.idx for f in frames] == [0, 1, 2]
+    assert BatchedReadStrategy().batch_size == 15
 
 
 def test_image_sequence_reader_yields_forward_order(synthetic_image_dir: Path):

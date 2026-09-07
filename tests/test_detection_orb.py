@@ -151,19 +151,32 @@ def test_resize_image_scales_dimensions_orthogonally():
     assert scaled.shape == (150, 300, 3)
 
 
-def test_orb_estimators_default_init_inherits_config_thresholds():
-    """Verify that estimators without explicit thresholds inherit global config tolerances."""
+def test_orb_estimators_default_init_parameters():
+    """Verify that estimators initialize with explicit default thresholds without relying on config."""
     transform_est = OrbTransformEstimator()
     rot_est = OrbRotationEstimator()
     scale_est = OrbScaleEstimator()
+    trans_est = OrbTranslationEstimator()
 
     assert transform_est.rotate_threshold == 0.10
     assert transform_est.scale_threshold == 0.0010
     assert transform_est.fast_threshold == 10
     assert rot_est.rotate_threshold == 0.10
+    assert rot_est.scale_threshold == 0.0010
     assert rot_est.fast_threshold == 10
     assert scale_est.scale_threshold == 0.0010
     assert scale_est.fast_threshold == 10
+    assert trans_est.fast_threshold == 10
+
+
+def test_orb_estimators_custom_parameters():
+    """Verify that estimators accept custom parameters explicitly passed to constructor."""
+    transform_est = OrbTransformEstimator(
+        rotate_threshold=0.25, scale_threshold=0.005, fast_threshold=15
+    )
+    assert transform_est.rotate_threshold == 0.25
+    assert transform_est.scale_threshold == 0.005
+    assert transform_est.fast_threshold == 15
 
 
 def test_orb_scale_estimator_detects_scale_with_zero_angle(
