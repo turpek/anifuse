@@ -8,6 +8,7 @@ def test_config_instance_default_thresholds():
     assert config.rotate_threshold == 0.20
     assert config.scale_threshold == 0.006
     assert config.translation_threshold == 0.0
+    assert config.batch_size == 15
 
 
 def test_config_mutation_is_reflected_globally():
