@@ -12,7 +12,7 @@ Este documento centraliza todos os objetivos arquiteturais, otimizações e o pr
 - [x] 4. Políticas de busca de janelas ativas (`Section`, `CrossSections`, `AdaptiveViewPolicy`).
 - [x] 5. Handlers de transformação geométrica em camadas do anicrop (`RotationHandler`, `ScaleHandler`, `TranslationHandler`).
 - [x] 6. Subsistema de leitura de imagens (`PathResolver`, `ReadStrategy`, `ImageSequenceReader`).
-- [ ] 7. Orquestrador de costura e composição de cena (`SceneStitcher` integrado ao `anicrop`).
+- [x] 7. Orquestrador de costura e composição de cena (`SceneStitcher`, `FrameAccumulator`, `StackOrder`).
 - [ ] 8. Subsistema de leitura de vídeo (integração com primitivas do `GPlayer`).
 - [ ] 9. Benchmarks de estresse, testes de ponta a ponta e documentação técnica.
 
@@ -110,3 +110,18 @@ class FrameReader(ABC):
 - Instancia `cv2.VideoCapture`, `FrameMapper` e seleciona dinamicamente `VideoBufferRight` ou `VideoBufferLeft`.
 - Converte os arrays lidos diretamente para `Image(arr, ImageFormat.RGBA)`.
 - Libera a thread e o handle do vídeo ao chamar `close()` ou no bloco `with`.
+
+---
+
+### Task 7: Orquestrador de Costura e Acumuladores de Composição (`SceneStitcher`)
+
+#### 1. Decisões Arquiteturais e Padrões de Projeto
+- **Injeção Explícita de Dependências:** O construtor `SceneStitcher.__init__` exige explicitamente `handlers: list[TransformHandler]` e `view_policy: ViewPolicy`, eliminando dependências ocultas e acoplamentos rígidos.
+- **Factory de Conveniência (`from_default`):** Fornece o caso de uso padrão montando `AdaptiveViewPolicy(OrbTransformEstimator())` com `[TranslationHandler()]` e `StackOrder.BOTH`.
+- **Estratégias de Acumulação (`FrameAccumulator`):**
+  - `FirstOnTopAccumulator`: Canvas acumulado no topo (`flatten([incoming, base])`), preservando a pose e composição do primeiro frame.
+  - `LastOnTopAccumulator`: Novo frame no topo (`flatten([base, incoming])`), priorizando o desfecho da cena.
+  - `DualAccumulator`: Gera ambas as composições concorrentemente com custo computacional extra mínimo (apenas um segundo `flatten`).
+- **Aproveitamento Direto de `ready_frame`:** O buffer já transformado/rotacionado pelo estimador é encapsulado em `anicrop.image.Image(ready_frame, frame.image.format)` e injetado na camada sem interpolações redundantes.
+- **Caso de 1 Frame Delegado:** Zero condicionais no fluxo de `stitch()`; se a sequência contém apenas 1 frame, o laço de alinhamento não roda e o acumulador retorna a imagem diretamente.
+
