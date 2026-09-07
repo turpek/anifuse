@@ -1,5 +1,11 @@
 """anifuse — Motor inteligente para fusão de cenas panorâmicas de animes."""
 
+from anifuse.accumulator import (
+    DualAccumulator,
+    FirstOnTopAccumulator,
+    LastOnTopAccumulator,
+    create_accumulator,
+)
 from anifuse.config import config
 from anifuse.handlers import (
     RotationHandler,
@@ -11,12 +17,16 @@ from anifuse.interfaces import (
     AlignmentResult,
     Estimator,
     Frame,
+    FrameAccumulator,
     FrameReader,
     MaskView,
     MotionEstimate,
     PathResolver,
+    ProgressCallback,
     ReadStrategy,
     Section,
+    StackOrder,
+    Stitcher,
     TransformHandler,
     ViewPolicy,
 )
@@ -34,6 +44,7 @@ from anifuse.reader import (
     ListPathResolver,
     StreamReadStrategy,
 )
+from anifuse.stitcher import SceneStitcher
 from anifuse.view_policy import AdaptiveViewPolicy, CrossSections
 
 __all__ = [
@@ -45,24 +56,33 @@ __all__ = [
     "CrossSections",
     "DefaultMaskView",
     "DirectoryPathResolver",
+    "DualAccumulator",
     "DynamicMaskView",
     "Estimator",
+    "FirstOnTopAccumulator",
     "Frame",
+    "FrameAccumulator",
     "FrameReader",
     "ImageSequenceReader",
+    "LastOnTopAccumulator",
     "ListPathResolver",
     "MaskView",
     "MotionEstimate",
     "PathResolver",
+    "ProgressCallback",
     "ReadStrategy",
     "RotationHandler",
     "ScaleHandler",
+    "SceneStitcher",
     "Section",
     "SequenceMaskView",
+    "StackOrder",
     "StaticMaskView",
+    "Stitcher",
     "StreamReadStrategy",
     "TransformHandler",
     "TranslationHandler",
     "ViewPolicy",
     "config",
+    "create_accumulator",
 ]

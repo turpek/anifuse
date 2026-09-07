@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from anifuse.interfaces.stitcher import StackOrder
+
 
 @dataclass
 class Config:
@@ -11,6 +13,7 @@ class Config:
     scale_threshold: float = 0.006
     translation_threshold: float = 0.0
     batch_size: int = 15
+    stack_order: StackOrder = StackOrder.BOTH
 
 
 config = Config()
