@@ -10,6 +10,7 @@ import pytest
 from anicrop.enums import ImageFormat
 from anicrop.image import Image
 
+from anifuse.detection.orb import OrbTransformEstimator
 from anifuse.handlers import TranslationHandler
 from anifuse.interfaces import (
     AlignmentResult,
@@ -21,6 +22,7 @@ from anifuse.interfaces import (
     ViewPolicy,
 )
 from anifuse.stitcher import SceneStitcher
+from anifuse.view_policy import AdaptiveViewPolicy
 
 if TYPE_CHECKING:
     pass
@@ -52,10 +54,10 @@ class _MockViewPolicy(ViewPolicy):
         incoming: Image,
         sections: Iterable[Section],
         frame_idx: int = 0,
-    ) -> tuple[AlignmentResult, np.ndarray]:
+    ) -> tuple[AlignmentResult, Image]:
         first_section = next(iter(sections))
         motion = MotionEstimate(dx=self.dx, dy=self.dy, confidence=0.99)
-        return AlignmentResult(ref=first_section.ref, motion=motion), incoming[...]
+        return AlignmentResult(ref=first_section.ref, motion=motion), incoming
 
 
 @pytest.fixture
@@ -186,3 +188,24 @@ def test_from_default_configures_default_handlers_and_policy():
     assert len(stitcher.handlers) == 1
     assert isinstance(stitcher.handlers[0], TranslationHandler)
     assert stitcher.stack_order == StackOrder.BOTH
+
+
+def test_from_default_forwards_threshold_parameters():
+    """Verify that from_default propagates custom threshold parameters to handler and estimator."""
+    stitcher = SceneStitcher.from_default(
+        rotate_threshold=0.25,
+        scale_threshold=0.005,
+        translation_threshold=2.0,
+        fast_threshold=7,
+    )
+
+    handler = stitcher.handlers[0]
+    policy = stitcher.view_policy
+    assert isinstance(handler, TranslationHandler)
+    assert handler.threshold == 2.0
+    assert isinstance(policy, AdaptiveViewPolicy)
+    estimator = policy._estimator
+    assert isinstance(estimator, OrbTransformEstimator)
+    assert estimator.rotate_threshold == 0.25
+    assert estimator.scale_threshold == 0.005
+    assert estimator.fast_threshold == 7

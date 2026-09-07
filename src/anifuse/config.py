@@ -9,9 +9,10 @@ from anifuse.interfaces.stitcher import StackOrder
 class Config:
     """Global configuration settings and threshold tolerances."""
 
-    rotate_threshold: float = 0.20
-    scale_threshold: float = 0.006
+    rotate_threshold: float = 0.10
+    scale_threshold: float = 0.0010
     translation_threshold: float = 0.0
+    fast_threshold: int = 10
     batch_size: int = 15
     stack_order: StackOrder = StackOrder.BOTH
 

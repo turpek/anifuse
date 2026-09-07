@@ -20,13 +20,14 @@ def dummy_image() -> Image:
     return Image(arr, ImageFormat.RGB)
 
 
-def test_default_mask_view_returns_full_array_and_no_mask(dummy_image: Image):
-    """Verify that DefaultMaskView returns full image array and None mask."""
+def test_default_mask_view_returns_full_image_and_no_mask(dummy_image: Image):
+    """Verify that DefaultMaskView returns full Image and None mask."""
     mask_view = DefaultMaskView()
 
-    frame_arr, mask = mask_view.get_mask(dummy_image, frame_idx=0)
+    frame_img, mask = mask_view.get_mask(dummy_image, frame_idx=0)
 
-    assert frame_arr.shape == (100, 100, 3)
+    assert isinstance(frame_img, Image)
+    assert frame_img.shape == (100, 100, 3)
     assert mask is None
 
 
@@ -35,9 +36,10 @@ def test_static_mask_view_with_region_slices_image(dummy_image: Image):
     region = Region.from_rect(10, 20, 30, 40)
     mask_view = StaticMaskView(region)
 
-    frame_arr, mask = mask_view.get_mask(dummy_image, frame_idx=0)
+    frame_img, mask = mask_view.get_mask(dummy_image, frame_idx=0)
 
-    assert frame_arr.shape == (40, 30, 3)
+    assert isinstance(frame_img, Image)
+    assert frame_img.shape == (40, 30, 3)
     assert mask is None
 
 
@@ -46,9 +48,10 @@ def test_static_mask_view_returns_configured_array(dummy_image: Image):
     mask_arr = np.ones((100, 100), dtype=np.uint8)
     mask_view = StaticMaskView(mask_arr)
 
-    frame_arr, mask = mask_view.get_mask(dummy_image, frame_idx=5)
+    frame_img, mask = mask_view.get_mask(dummy_image, frame_idx=5)
 
-    assert frame_arr.shape == (100, 100, 3)
+    assert isinstance(frame_img, Image)
+    assert frame_img.shape == (100, 100, 3)
     assert mask is mask_arr
 
 
@@ -58,9 +61,10 @@ def test_static_mask_view_returns_none_when_configured_with_none(
     """Verify that StaticMaskView returns None mask when initialized with None."""
     mask_view = StaticMaskView(None)
 
-    frame_arr, mask = mask_view.get_mask(dummy_image, frame_idx=0)
+    frame_img, mask = mask_view.get_mask(dummy_image, frame_idx=0)
 
-    assert frame_arr.shape == (100, 100, 3)
+    assert isinstance(frame_img, Image)
+    assert frame_img.shape == (100, 100, 3)
     assert mask is None
 
 
@@ -81,9 +85,10 @@ def test_sequence_mask_view_returns_mask_by_index(
     seq = [Region.from_rect(0, 0, 20, 10), Region.from_rect(10, 10, 40, 30)]
     mask_view = SequenceMaskView(seq)
 
-    frame_arr, mask = mask_view.get_mask(dummy_image, frame_idx=frame_idx)
+    frame_img, mask = mask_view.get_mask(dummy_image, frame_idx=frame_idx)
 
-    assert frame_arr.shape == expected_shape
+    assert isinstance(frame_img, Image)
+    assert frame_img.shape == expected_shape
     assert mask is None
 
 
@@ -94,9 +99,10 @@ def test_sequence_mask_view_returns_none_when_out_of_bounds(
     seq = [Region.from_rect(0, 0, 10, 10)]
     mask_view = SequenceMaskView(seq)
 
-    frame_arr, mask = mask_view.get_mask(dummy_image, frame_idx=99)
+    frame_img, mask = mask_view.get_mask(dummy_image, frame_idx=99)
 
-    assert frame_arr.shape == (100, 100, 3)
+    assert isinstance(frame_img, Image)
+    assert frame_img.shape == (100, 100, 3)
     assert mask is None
 
 
@@ -108,9 +114,10 @@ def test_dynamic_mask_view_evaluates_detector_callback(dummy_image: Image):
 
     mask_view = DynamicMaskView(mock_detector)
 
-    frame_arr, mask = mask_view.get_mask(dummy_image, frame_idx=3)
+    frame_img, mask = mask_view.get_mask(dummy_image, frame_idx=3)
 
-    assert frame_arr.shape == (30, 30, 3)
+    assert isinstance(frame_img, Image)
+    assert frame_img.shape == (30, 30, 3)
     assert mask is None
 
 
@@ -120,9 +127,10 @@ def test_composite_mask_view_returns_none_when_all_masks_are_none(
     """Verify that CompositeMaskView returns None mask when all child masks evaluate to None."""
     mask_view = CompositeMaskView([StaticMaskView(None), StaticMaskView(None)])
 
-    frame_arr, mask = mask_view.get_mask(dummy_image, frame_idx=0)
+    frame_img, mask = mask_view.get_mask(dummy_image, frame_idx=0)
 
-    assert frame_arr.shape == (100, 100, 3)
+    assert isinstance(frame_img, Image)
+    assert frame_img.shape == (100, 100, 3)
     assert mask is None
 
 
@@ -136,9 +144,10 @@ def test_composite_mask_view_combines_array_masks(
     arr2[20:30, 20:30] = 0
 
     composite = CompositeMaskView([StaticMaskView(arr1), StaticMaskView(arr2)])
-    frame_arr, compiled = composite.get_mask(dummy_image, frame_idx=0)
+    frame_img, compiled = composite.get_mask(dummy_image, frame_idx=0)
 
-    assert frame_arr.shape == (100, 100, 3)
+    assert isinstance(frame_img, Image)
+    assert frame_img.shape == (100, 100, 3)
     assert isinstance(compiled, np.ndarray)
     assert compiled.shape == (100, 100)
     assert compiled.dtype == np.uint8

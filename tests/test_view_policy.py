@@ -29,10 +29,10 @@ class _MockEstimator(Estimator):
 
     def estimate(
         self,
-        ref: np.ndarray,
-        incoming: np.ndarray,
+        ref: Image,
+        incoming: Image,
         mask: np.ndarray | None = None,
-    ) -> tuple[MotionEstimate, np.ndarray]:
+    ) -> tuple[MotionEstimate, Image]:
         self.last_mask = mask
         conf = (
             self.confidences[self.call_count]
@@ -117,10 +117,12 @@ def test_adaptive_view_policy_returns_first_section_passing_threshold(
     sec1 = Section(Region.from_rect(0, 0, 200, 200), Region.from_rect(0, 0, 200, 200))
     sec2 = Section(Region.from_rect(200, 0, 200, 200), Region.from_rect(200, 0, 200, 200))
 
-    alignment, ready_frame = policy.resolve(canvas_image, incoming_image, [sec1, sec2])
+    alignment, ready_image = policy.resolve(canvas_image, incoming_image, [sec1, sec2])
 
     assert isinstance(alignment, AlignmentResult)
     assert alignment.ref == sec1.ref
+    assert isinstance(ready_image, Image)
+    assert ready_image is incoming_image
     assert estimator.call_count == 1
 
 
@@ -133,9 +135,11 @@ def test_adaptive_view_policy_evaluates_subsequent_sections_if_first_fails(
     sec1 = Section(Region.from_rect(0, 0, 200, 200), Region.from_rect(0, 0, 200, 200))
     sec2 = Section(Region.from_rect(200, 0, 200, 200), Region.from_rect(200, 0, 200, 200))
 
-    alignment, ready_frame = policy.resolve(canvas_image, incoming_image, [sec1, sec2])
+    alignment, ready_image = policy.resolve(canvas_image, incoming_image, [sec1, sec2])
 
     assert alignment.ref == sec2.ref
+    assert isinstance(ready_image, Image)
+    assert ready_image is incoming_image
     assert estimator.call_count == 2
 
 

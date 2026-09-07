@@ -15,13 +15,13 @@ if TYPE_CHECKING:
 
 
 class DefaultMaskView(MaskView):
-    """Default pass-through mask view returning full image array and no mask."""
+    """Default pass-through mask view returning full image and no mask."""
 
     def get_mask(
         self, image: Image, frame_idx: int = 0
-    ) -> tuple[np.ndarray, np.ndarray | None]:
-        """Return full image array with no mask."""
-        return image[...], None
+    ) -> tuple[Image, np.ndarray | None]:
+        """Return full Image with no mask."""
+        return image, None
 
 
 class StaticMaskView(MaskView):
@@ -33,13 +33,13 @@ class StaticMaskView(MaskView):
 
     def get_mask(
         self, image: Image, frame_idx: int = 0
-    ) -> tuple[np.ndarray, np.ndarray | None]:
-        """Return frame array and mask corresponding to configured static mask."""
+    ) -> tuple[Image, np.ndarray | None]:
+        """Return frame Image and mask corresponding to configured static mask."""
         if isinstance(self._mask, Region):
-            return image[self._mask], None
+            return image.view(self._mask), None
         if isinstance(self._mask, np.ndarray):
-            return image[...], self._mask
-        return image[...], None
+            return image, self._mask
+        return image, None
 
 
 class SequenceMaskView(MaskView):
@@ -51,15 +51,15 @@ class SequenceMaskView(MaskView):
 
     def get_mask(
         self, image: Image, frame_idx: int = 0
-    ) -> tuple[np.ndarray, np.ndarray | None]:
-        """Return frame array and mask corresponding to the given frame index."""
+    ) -> tuple[Image, np.ndarray | None]:
+        """Return frame Image and mask corresponding to the given frame index."""
         if 0 <= frame_idx < len(self._sequence):
             mask = self._sequence[frame_idx]
             if isinstance(mask, Region):
-                return image[mask], None
+                return image.view(mask), None
             if isinstance(mask, np.ndarray):
-                return image[...], mask
-        return image[...], None
+                return image, mask
+        return image, None
 
 
 class DynamicMaskView(MaskView):
@@ -74,14 +74,14 @@ class DynamicMaskView(MaskView):
 
     def get_mask(
         self, image: Image, frame_idx: int = 0
-    ) -> tuple[np.ndarray, np.ndarray | None]:
-        """Evaluate detector on given image and return frame array and mask."""
+    ) -> tuple[Image, np.ndarray | None]:
+        """Evaluate detector on given image and return frame Image and mask."""
         result = self._detector(image, frame_idx)
         if isinstance(result, Region):
-            return image[result], None
+            return image.view(result), None
         if isinstance(result, np.ndarray):
-            return image[...], result
-        return image[...], None
+            return image, result
+        return image, None
 
 
 class CompositeMaskView(MaskView):
@@ -93,21 +93,20 @@ class CompositeMaskView(MaskView):
 
     def get_mask(
         self, image: Image, frame_idx: int = 0
-    ) -> tuple[np.ndarray, np.ndarray | None]:
+    ) -> tuple[Image, np.ndarray | None]:
         """Collect active child masks and compile into a single uint8 binary mask array."""
         active_masks: list[np.ndarray] = []
-        full_arr = image[...]
         for mv in self._masks:
             _, m = mv.get_mask(image, frame_idx)
             if m is not None:
                 active_masks.append(m)
 
         if not active_masks:
-            return full_arr, None
+            return image, None
 
-        h, w = full_arr.shape[:2]
+        h, w = image.height, image.width
         compiled = np.full((h, w), 255, dtype=np.uint8)
         for m in active_masks:
             compiled[m == 0] = 0
 
-        return full_arr, compiled
+        return image, compiled

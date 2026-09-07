@@ -9,15 +9,15 @@ from anifuse.interfaces import MaskView
 class DummyArrayMask(MaskView):
     def get_mask(
         self, image: Image, frame_idx: int = 0
-    ) -> tuple[np.ndarray, np.ndarray | None]:
-        return image[...], np.zeros(image[...].shape[:2], dtype=np.uint8)
+    ) -> tuple[Image, np.ndarray | None]:
+        return image, np.zeros((image.height, image.width), dtype=np.uint8)
 
 
 class DummyNoneMask(MaskView):
     def get_mask(
         self, image: Image, frame_idx: int = 0
-    ) -> tuple[np.ndarray, np.ndarray | None]:
-        return image[...], None
+    ) -> tuple[Image, np.ndarray | None]:
+        return image, None
 
 
 def test_mask_view_cannot_be_instantiated_directly():
@@ -41,7 +41,7 @@ def test_mask_view_concrete_subclass_returns_expected_types(
     arr = np.zeros((100, 100, 3), dtype=np.uint8)
     dummy_image = Image(arr, ImageFormat.RGB)
     instance = mask_cls()
-    frame_arr, mask = instance.get_mask(dummy_image, frame_idx=0)
+    frame_img, mask = instance.get_mask(dummy_image, frame_idx=0)
 
-    assert isinstance(frame_arr, np.ndarray)
+    assert isinstance(frame_img, Image)
     assert isinstance(mask, expected_mask_type)

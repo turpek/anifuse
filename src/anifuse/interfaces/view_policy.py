@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import numpy as np
     from anicrop.image import Image
     from anicrop.spatial import Region
 
@@ -41,7 +40,7 @@ class ViewPolicy(ABC):
         incoming: Image,
         sections: Iterable[Section],
         frame_idx: int = 0,
-    ) -> tuple[AlignmentResult, np.ndarray]:
+    ) -> tuple[AlignmentResult, Image]:
         """Evaluate candidate sections, apply mask to incoming, and estimate motion."""
         pass
 

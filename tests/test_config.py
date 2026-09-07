@@ -5,9 +5,10 @@ from anifuse.config import config
 
 def test_config_instance_default_thresholds():
     """Verify default values for rotation, scale, and translation thresholds."""
-    assert config.rotate_threshold == 0.20
-    assert config.scale_threshold == 0.006
+    assert config.rotate_threshold == 0.10
+    assert config.scale_threshold == 0.0010
     assert config.translation_threshold == 0.0
+    assert config.fast_threshold == 10
     assert config.batch_size == 15
 
 

@@ -1,9 +1,13 @@
-"""Abstract base class and types for motion estimators."""
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from anicrop.image import Image
 
 
 @dataclass(frozen=True)
@@ -23,18 +27,18 @@ class Estimator(ABC):
     @abstractmethod
     def estimate(
         self,
-        ref: np.ndarray,
-        incoming: np.ndarray,
+        ref: Image,
+        incoming: Image,
         mask: np.ndarray | None = None,
-    ) -> tuple[MotionEstimate, np.ndarray]:
-        """Estimate relative motion between reference and incoming image arrays.
+    ) -> tuple[MotionEstimate, Image]:
+        """Estimate relative motion between reference and incoming images.
 
         Args:
-            ref: Reference image array (e.g. active view from canvas).
-            incoming: Incoming image array.
-            mask: Optional single-channel uint8 exclusion mask for incoming array.
+            ref: Reference image (e.g. active view from canvas).
+            incoming: Incoming image.
+            mask: Optional single-channel uint8 exclusion mask.
 
         Returns:
-            A tuple of (MotionEstimate, processed_incoming_array).
+            A tuple of (MotionEstimate, processed_incoming_image).
         """
         pass

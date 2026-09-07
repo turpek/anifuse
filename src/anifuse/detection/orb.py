@@ -1,10 +1,14 @@
 """ORB feature-based estimators for pure translation and full affine transformations."""
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from statistics import StatisticsError, mode
 
 import cv2
 import numpy as np
+from anicrop.enums import ImageFormat, InterpMode
+from anicrop.image import Image
 
 from anifuse.config import config
 from anifuse.interfaces import Estimator, MotionEstimate
@@ -32,17 +36,47 @@ def discrete_mode(diff: np.ndarray) -> tuple[float, float]:
     return delx, dely
 
 
-def rotate_image(mat: np.ndarray, angle: float, scale: float) -> np.ndarray:
+def resize_image(
+    mat: np.ndarray,
+    scale: float,
+    interp: InterpMode = InterpMode.LANCZOS,
+) -> np.ndarray:
+    """Resize an image array along X and Y axes without any rotational skew.
+
+    Args:
+        mat: Input image NumPy array (H, W) or (H, W, C).
+        scale: Scale multiplier (e.g. 1.0 / detected_scale).
+        interp: Interpolation mode from anicrop.enums (defaults to InterpMode.LANCZOS).
+
+    Returns:
+        Resized image array.
+    """
+    height, width = mat.shape[:2]
+    new_w = max(1, int(round(width * scale)))
+    new_h = max(1, int(round(height * scale)))
+    return cv2.resize(mat, (new_w, new_h), interpolation=interp.value)
+
+
+def rotate_image(
+    mat: np.ndarray,
+    angle: float,
+    scale: float = 1.0,
+    interp: InterpMode = InterpMode.LANCZOS,
+) -> np.ndarray:
     """Rotate and scale an image array, expanding bounding box to avoid clipping.
 
     Args:
         mat: Input image NumPy array (H, W) or (H, W, C).
         angle: Rotation angle in degrees (counter-clockwise).
         scale: Scale multiplier.
+        interp: Interpolation mode from anicrop.enums (defaults to InterpMode.LANCZOS).
 
     Returns:
         Warped image array with expanded dimensions.
     """
+    if abs(angle) < 1e-5:
+        return resize_image(mat, scale, interp=interp)
+
     height, width = mat.shape[:2]
     center = (width / 2.0, height / 2.0)
     rot_mat = cv2.getRotationMatrix2D(center, angle, scale)
@@ -55,7 +89,7 @@ def rotate_image(mat: np.ndarray, angle: float, scale: float) -> np.ndarray:
     rot_mat[0, 2] += bound_w / 2.0 - center[0]
     rot_mat[1, 2] += bound_h / 2.0 - center[1]
 
-    return cv2.warpAffine(mat, rot_mat, (bound_w, bound_h))
+    return cv2.warpAffine(mat, rot_mat, (bound_w, bound_h), flags=interp.value)
 
 
 class _BaseOrbEstimator(Estimator):
@@ -67,19 +101,25 @@ class _BaseOrbEstimator(Estimator):
         distance_threshold: float = 40.0,
         nbest: int = 40,
         translation_metric: Callable[[np.ndarray], tuple[float, float]] = discrete_mode,
+        fast_threshold: int | None = None,
     ) -> None:
         self.max_features = max_features
         self.distance_threshold = distance_threshold
         self.nbest = nbest
         self.translation_metric = translation_metric
+        self.fast_threshold = (
+            config.fast_threshold if fast_threshold is None else fast_threshold
+        )
 
-        self._orb = cv2.ORB_create(nfeatures=max_features, scoreType=cv2.ORB_FAST_SCORE)
+        self._orb = cv2.ORB_create(  # type: ignore[attr-defined]
+            nfeatures=max_features,
+            scoreType=cv2.ORB_FAST_SCORE,
+            fastThreshold=self.fast_threshold,
+        )
         self._matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
 
-    def _to_gray(self, img: np.ndarray) -> np.ndarray:
-        if img.ndim == 3:
-            return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        return img
+    def _to_gray(self, img: Image) -> np.ndarray:
+        return img.to_uint8().to_format(ImageFormat.GRAY)[...].squeeze()
 
     def _extract_matches(
         self,
@@ -125,12 +165,28 @@ class _BaseOrbEstimator(Estimator):
 class OrbTranslationEstimator(_BaseOrbEstimator):
     """Fast single-pass motion estimator for pure translation pan shots."""
 
+    def __init__(
+        self,
+        max_features: int = 5000,
+        distance_threshold: float = 40.0,
+        nbest: int = 40,
+        translation_metric: Callable[[np.ndarray], tuple[float, float]] = discrete_mode,
+        fast_threshold: int | None = None,
+    ) -> None:
+        super().__init__(
+            max_features=max_features,
+            distance_threshold=distance_threshold,
+            nbest=nbest,
+            translation_metric=translation_metric,
+            fast_threshold=fast_threshold,
+        )
+
     def estimate(
         self,
-        ref: np.ndarray,
-        incoming: np.ndarray,
+        ref: Image,
+        incoming: Image,
         mask: np.ndarray | None = None,
-    ) -> tuple[MotionEstimate, np.ndarray]:
+    ) -> tuple[MotionEstimate, Image]:
         """Estimate 2D translation in a single pass, returning the unmodified incoming frame."""
         gray1 = self._to_gray(ref)
         gray2 = self._to_gray(incoming)
@@ -160,12 +216,42 @@ class OrbTranslationEstimator(_BaseOrbEstimator):
 class OrbTransformEstimator(_BaseOrbEstimator):
     """Two-stage affine estimator handling camera rotation, scale, and translation."""
 
+    def __init__(
+        self,
+        max_features: int = 5000,
+        distance_threshold: float = 40.0,
+        nbest: int = 40,
+        translation_metric: Callable[[np.ndarray], tuple[float, float]] = discrete_mode,
+        interp: InterpMode = InterpMode.LANCZOS,
+        rotate_threshold: float | None = None,
+        scale_threshold: float | None = None,
+        fast_threshold: int | None = None,
+    ) -> None:
+        super().__init__(
+            max_features=max_features,
+            distance_threshold=distance_threshold,
+            nbest=nbest,
+            translation_metric=translation_metric,
+            fast_threshold=fast_threshold,
+        )
+        self.interp = interp
+        self.rotate_threshold = (
+            config.rotate_threshold
+            if rotate_threshold is None
+            else rotate_threshold
+        )
+        self.scale_threshold = (
+            config.scale_threshold
+            if scale_threshold is None
+            else scale_threshold
+        )
+
     def estimate(
         self,
-        ref: np.ndarray,
-        incoming: np.ndarray,
+        ref: Image,
+        incoming: Image,
         mask: np.ndarray | None = None,
-    ) -> tuple[MotionEstimate, np.ndarray]:
+    ) -> tuple[MotionEstimate, Image]:
         """Estimate rotation and scale, rotating the frame if necessary, then refine translation."""
         gray1 = self._to_gray(ref)
         gray2 = self._to_gray(incoming)
@@ -174,37 +260,59 @@ class OrbTransformEstimator(_BaseOrbEstimator):
         if kp1 is None or kp2 is None or len(valid) < 4:
             return MotionEstimate(confidence=0.0), incoming
 
-        pts1 = np.float32([kp1[m.queryIdx].pt for m in valid]).reshape(-1, 1, 2)
-        pts2 = np.float32([kp2[m.trainIdx].pt for m in valid]).reshape(-1, 1, 2)
+        pts1 = np.array([kp1[m.queryIdx].pt for m in valid], dtype=np.float32).reshape(
+            -1, 1, 2
+        )
+        pts2 = np.array([kp2[m.trainIdx].pt for m in valid], dtype=np.float32).reshape(
+            -1, 1, 2
+        )
 
         matrix_inv, _ = cv2.estimateAffinePartial2D(pts1, pts2)
         if matrix_inv is not None:
-            scale = float(np.sqrt(np.linalg.det(matrix_inv[:2, :2])))
-            angle = float(
+            raw_scale = float(np.sqrt(np.linalg.det(matrix_inv[:2, :2])))
+            raw_angle = float(
                 np.arctan2(matrix_inv[1, 0], matrix_inv[0, 0]) * (180.0 / np.pi)
             )
         else:
-            scale, angle = 1.0, 0.0
+            raw_scale, raw_angle = 1.0, 0.0
 
-        has_rotation = abs(angle) > config.rotate_threshold
-        has_scale = abs(1.0 - scale) > config.scale_threshold
+        angle = raw_angle if abs(raw_angle) > self.rotate_threshold else 0.0
+        scale = raw_scale if abs(1.0 - raw_scale) > self.scale_threshold else 0.0
 
-        if has_rotation or has_scale:
-            # Rotate incoming image and run second pass on aligned pixel grid
-            rotated_incoming = rotate_image(incoming, angle, 1.0 / scale)
-            gray2_rot = self._to_gray(rotated_incoming)
-            rotated_mask = (
-                rotate_image(mask, angle, 1.0 / scale)
-                if mask is not None
-                else None
-            )
+        if angle or scale:
+            apply_angle = angle
+            apply_scale = (1.0 / scale) if scale else 1.0
+
+            if not angle:
+                transformed_arr = resize_image(
+                    incoming[...], apply_scale, interp=self.interp
+                )
+                transformed_mask = (
+                    resize_image(mask, apply_scale, interp=InterpMode.NEAREST)
+                    if mask is not None
+                    else None
+                )
+            else:
+                transformed_arr = rotate_image(
+                    incoming[...], apply_angle, apply_scale, interp=self.interp
+                )
+                transformed_mask = (
+                    rotate_image(
+                        mask, apply_angle, apply_scale, interp=InterpMode.NEAREST
+                    )
+                    if mask is not None
+                    else None
+                )
+
+            transformed_incoming = Image(transformed_arr, incoming.format)
+            gray2_transformed = self._to_gray(transformed_incoming)
 
             kp1_r, kp2_r, matches_r, valid_r = self._extract_matches(
-                gray1, gray2_rot, mask=rotated_mask
+                gray1, gray2_transformed, mask=transformed_mask
             )
 
             if kp1_r is None or kp2_r is None or len(valid_r) < 4:
-                return MotionEstimate(confidence=0.0), rotated_incoming
+                return MotionEstimate(confidence=0.0), transformed_incoming
 
             n_use = min(self.nbest, len(matches_r))
             coords1 = [kp1_r[m.queryIdx].pt for m in matches_r[:n_use]]
@@ -221,9 +329,254 @@ class OrbTransformEstimator(_BaseOrbEstimator):
                 scale=1.0,
                 confidence=confidence,
             )
-            return estimate, rotated_incoming
+            return estimate, transformed_incoming
 
-        # Single step (no significant rotation): compute translation directly
+        # Single step (no significant transform): compute translation directly
+        n_use = min(self.nbest, len(matches))
+        coords1 = [kp1[m.queryIdx].pt for m in matches[:n_use]]
+        coords2 = [kp2[m.trainIdx].pt for m in matches[:n_use]]
+        diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
+
+        delx, dely = self.translation_metric(diff)
+        confidence = self._calculate_confidence(diff, delx, dely, len(valid))
+
+        estimate = MotionEstimate(
+            dx=delx,
+            dy=dely,
+            angle=0.0,
+            scale=1.0,
+            confidence=confidence,
+        )
+        return estimate, incoming
+
+
+class OrbRotationEstimator(_BaseOrbEstimator):
+    """Specialized estimator for pan shots with camera rotation / roll changes.
+
+    Disregards rotational noise below rotate_threshold, and incorporates scale if present.
+    """
+
+    def __init__(
+        self,
+        max_features: int = 5000,
+        distance_threshold: float = 40.0,
+        nbest: int = 40,
+        translation_metric: Callable[[np.ndarray], tuple[float, float]] = discrete_mode,
+        interp: InterpMode = InterpMode.LANCZOS,
+        rotate_threshold: float | None = None,
+        scale_threshold: float | None = None,
+        fast_threshold: int | None = None,
+    ) -> None:
+        super().__init__(
+            max_features=max_features,
+            distance_threshold=distance_threshold,
+            nbest=nbest,
+            translation_metric=translation_metric,
+            fast_threshold=fast_threshold,
+        )
+        self.interp = interp
+        self.rotate_threshold = (
+            config.rotate_threshold
+            if rotate_threshold is None
+            else rotate_threshold
+        )
+        self.scale_threshold = (
+            config.scale_threshold
+            if scale_threshold is None
+            else scale_threshold
+        )
+
+    def estimate(
+        self,
+        ref: Image,
+        incoming: Image,
+        mask: np.ndarray | None = None,
+    ) -> tuple[MotionEstimate, Image]:
+        """Estimate rotation, rotating incoming frame if needed, then refine translation."""
+        gray1 = self._to_gray(ref)
+        gray2 = self._to_gray(incoming)
+
+        kp1, kp2, matches, valid = self._extract_matches(gray1, gray2, mask=mask)
+        if kp1 is None or kp2 is None or len(valid) < 4:
+            return MotionEstimate(confidence=0.0), incoming
+
+        pts1 = np.array([kp1[m.queryIdx].pt for m in valid], dtype=np.float32).reshape(
+            -1, 1, 2
+        )
+        pts2 = np.array([kp2[m.trainIdx].pt for m in valid], dtype=np.float32).reshape(
+            -1, 1, 2
+        )
+
+        matrix_inv, _ = cv2.estimateAffinePartial2D(pts1, pts2)
+        if matrix_inv is not None:
+            raw_scale = float(np.sqrt(np.linalg.det(matrix_inv[:2, :2])))
+            raw_angle = float(
+                np.arctan2(matrix_inv[1, 0], matrix_inv[0, 0]) * (180.0 / np.pi)
+            )
+        else:
+            raw_scale, raw_angle = 1.0, 0.0
+
+        angle = raw_angle if abs(raw_angle) > self.rotate_threshold else 0.0
+        scale = raw_scale if abs(1.0 - raw_scale) > self.scale_threshold else 0.0
+
+        if angle:
+            apply_angle = angle
+            apply_scale = (1.0 / scale) if scale else 1.0
+            transformed_arr = rotate_image(
+                incoming[...], apply_angle, apply_scale, interp=self.interp
+            )
+            transformed_incoming = Image(transformed_arr, incoming.format)
+            gray2_rot = self._to_gray(transformed_incoming)
+            transformed_mask = (
+                rotate_image(
+                    mask, apply_angle, apply_scale, interp=InterpMode.NEAREST
+                )
+                if mask is not None
+                else None
+            )
+
+            kp1_r, kp2_r, matches_r, valid_r = self._extract_matches(
+                gray1, gray2_rot, mask=transformed_mask
+            )
+
+            if kp1_r is None or kp2_r is None or len(valid_r) < 4:
+                return MotionEstimate(confidence=0.0), transformed_incoming
+
+            n_use = min(self.nbest, len(matches_r))
+            coords1 = [kp1_r[m.queryIdx].pt for m in matches_r[:n_use]]
+            coords2 = [kp2_r[m.trainIdx].pt for m in matches_r[:n_use]]
+            diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
+
+            delx, dely = self.translation_metric(diff)
+            confidence = self._calculate_confidence(diff, delx, dely, len(valid_r))
+
+            estimate = MotionEstimate(
+                dx=delx,
+                dy=dely,
+                angle=0.0,
+                scale=1.0,
+                confidence=confidence,
+            )
+            return estimate, transformed_incoming
+
+        # Single-pass: pure translation
+        n_use = min(self.nbest, len(matches))
+        coords1 = [kp1[m.queryIdx].pt for m in matches[:n_use]]
+        coords2 = [kp2[m.trainIdx].pt for m in matches[:n_use]]
+        diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
+
+        delx, dely = self.translation_metric(diff)
+        confidence = self._calculate_confidence(diff, delx, dely, len(valid))
+
+        estimate = MotionEstimate(
+            dx=delx,
+            dy=dely,
+            angle=0.0,
+            scale=1.0,
+            confidence=confidence,
+        )
+        return estimate, incoming
+
+
+class OrbScaleEstimator(_BaseOrbEstimator):
+    """Specialized estimator for pan shots with camera zoom / scale changes.
+
+    Disregards rotational jitter completely (angle is always 0.0), using pure
+    axis-aligned image resizing instead of affine warping to avoid subpixel rotation blur.
+    """
+
+    def __init__(
+        self,
+        max_features: int = 5000,
+        distance_threshold: float = 40.0,
+        nbest: int = 40,
+        translation_metric: Callable[[np.ndarray], tuple[float, float]] = discrete_mode,
+        interp: InterpMode = InterpMode.LANCZOS,
+        scale_threshold: float | None = None,
+        fast_threshold: int | None = None,
+    ) -> None:
+        super().__init__(
+            max_features=max_features,
+            distance_threshold=distance_threshold,
+            nbest=nbest,
+            translation_metric=translation_metric,
+            fast_threshold=fast_threshold,
+        )
+        self.interp = interp
+        self.scale_threshold = (
+            config.scale_threshold
+            if scale_threshold is None
+            else scale_threshold
+        )
+
+    def estimate(
+        self,
+        ref: Image,
+        incoming: Image,
+        mask: np.ndarray | None = None,
+    ) -> tuple[MotionEstimate, Image]:
+        """Estimate scale, resizing incoming frame if needed, then refine translation."""
+        gray1 = self._to_gray(ref)
+        gray2 = self._to_gray(incoming)
+
+        kp1, kp2, matches, valid = self._extract_matches(gray1, gray2, mask=mask)
+        if kp1 is None or kp2 is None or len(valid) < 4:
+            return MotionEstimate(confidence=0.0), incoming
+
+        pts1 = np.array([kp1[m.queryIdx].pt for m in valid], dtype=np.float32).reshape(
+            -1, 1, 2
+        )
+        pts2 = np.array([kp2[m.trainIdx].pt for m in valid], dtype=np.float32).reshape(
+            -1, 1, 2
+        )
+
+        matrix_inv, _ = cv2.estimateAffinePartial2D(pts1, pts2)
+        if matrix_inv is not None:
+            raw_scale = float(np.sqrt(np.linalg.det(matrix_inv[:2, :2])))
+        else:
+            raw_scale = 1.0
+
+        angle = 0.0
+        scale = raw_scale if abs(1.0 - raw_scale) > self.scale_threshold else 0.0
+
+        if scale:
+            apply_scale = 1.0 / scale
+            transformed_arr = resize_image(
+                incoming[...], apply_scale, interp=self.interp
+            )
+            transformed_incoming = Image(transformed_arr, incoming.format)
+            gray2_scaled = self._to_gray(transformed_incoming)
+            transformed_mask = (
+                resize_image(mask, apply_scale, interp=InterpMode.NEAREST)
+                if mask is not None
+                else None
+            )
+
+            kp1_s, kp2_s, matches_s, valid_s = self._extract_matches(
+                gray1, gray2_scaled, mask=transformed_mask
+            )
+
+            if kp1_s is None or kp2_s is None or len(valid_s) < 4:
+                return MotionEstimate(confidence=0.0), transformed_incoming
+
+            n_use = min(self.nbest, len(matches_s))
+            coords1 = [kp1_s[m.queryIdx].pt for m in matches_s[:n_use]]
+            coords2 = [kp2_s[m.trainIdx].pt for m in matches_s[:n_use]]
+            diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
+
+            delx, dely = self.translation_metric(diff)
+            confidence = self._calculate_confidence(diff, delx, dely, len(valid_s))
+
+            estimate = MotionEstimate(
+                dx=delx,
+                dy=dely,
+                angle=angle,
+                scale=1.0,
+                confidence=confidence,
+            )
+            return estimate, transformed_incoming
+
+        # Single-pass: pure translation
         n_use = min(self.nbest, len(matches))
         coords1 = [kp1[m.queryIdx].pt for m in matches[:n_use]]
         coords2 = [kp2[m.trainIdx].pt for m in matches[:n_use]]

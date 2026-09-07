@@ -51,6 +51,10 @@ class SceneStitcher(Stitcher):
         handlers: list[TransformHandler] | None = None,
         mask_view: MaskView | None = None,
         confidence_threshold: float = 0.80,
+        rotate_threshold: float | None = None,
+        scale_threshold: float | None = None,
+        translation_threshold: float | None = None,
+        fast_threshold: int | None = None,
         stack_order: StackOrder = StackOrder.BOTH,
         blend_mode: BlendMode = BlendMode.SOLID_FILL,
         interp: InterpMode = InterpMode.LANCZOS,
@@ -58,12 +62,19 @@ class SceneStitcher(Stitcher):
     ) -> Self:
         """Convenience factory using OrbTransformEstimator and TranslationHandler by default."""
         actual_estimator = (
-            estimator if estimator is not None else OrbTransformEstimator()
+            estimator
+            if estimator is not None
+            else OrbTransformEstimator(
+                interp=interp,
+                rotate_threshold=rotate_threshold,
+                scale_threshold=scale_threshold,
+                fast_threshold=fast_threshold,
+            )
         )
-        actual_handlers = (
+        actual_handlers: list[TransformHandler] = (
             list(handlers)
             if handlers is not None
-            else [TranslationHandler()]
+            else [TranslationHandler(threshold=translation_threshold)]
         )
         policy = AdaptiveViewPolicy(
             estimator=actual_estimator,
@@ -102,14 +113,13 @@ class SceneStitcher(Stitcher):
             sections = CrossSections(
                 accumulator.reference_layer.global_region, last_region
             )
-            alignment, ready_frame = self.view_policy.resolve(
+            alignment, ready_image = self.view_policy.resolve(
                 base=accumulator.reference_layer.edits[0].image,
                 incoming=frame.image,
                 sections=sections,
                 frame_idx=frame.idx,
             )
 
-            ready_image = Image(ready_frame, frame.image.format)
             layer2 = Layer(
                 ready_image,
                 name=f"frame_{frame.idx}",
