@@ -105,6 +105,22 @@ class _BaseOrbEstimator(Estimator):
 
         return kp1, kp2, matches, valid
 
+    def _calculate_confidence(
+        self,
+        diff: np.ndarray,
+        delx: float,
+        dely: float,
+        valid_count: int,
+    ) -> float:
+        """Calculate scale-independent motion confidence based on consensus and inlier volume."""
+        if len(diff) == 0:
+            return 0.0
+        min_required = min(self.nbest, 20)
+        volume_factor = min(1.0, float(valid_count / max(1, min_required)))
+        inliers = (np.abs(diff[:, 0] - delx) <= 2) & (np.abs(diff[:, 1] - dely) <= 2)
+        consensus_factor = float(np.sum(inliers) / len(diff))
+        return float(volume_factor * consensus_factor)
+
 
 class OrbTranslationEstimator(_BaseOrbEstimator):
     """Fast single-pass motion estimator for pure translation pan shots."""
@@ -129,7 +145,7 @@ class OrbTranslationEstimator(_BaseOrbEstimator):
         diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
 
         delx, dely = self.translation_metric(diff)
-        confidence = float(len(valid) / max(1, len(matches)))
+        confidence = self._calculate_confidence(diff, delx, dely, len(valid))
 
         estimate = MotionEstimate(
             dx=delx,
@@ -196,7 +212,7 @@ class OrbTransformEstimator(_BaseOrbEstimator):
             diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
 
             delx, dely = self.translation_metric(diff)
-            confidence = float(len(valid_r) / max(1, len(matches_r)))
+            confidence = self._calculate_confidence(diff, delx, dely, len(valid_r))
 
             estimate = MotionEstimate(
                 dx=delx,
@@ -214,7 +230,7 @@ class OrbTransformEstimator(_BaseOrbEstimator):
         diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
 
         delx, dely = self.translation_metric(diff)
-        confidence = float(len(valid) / max(1, len(matches)))
+        confidence = self._calculate_confidence(diff, delx, dely, len(valid))
 
         estimate = MotionEstimate(
             dx=delx,
