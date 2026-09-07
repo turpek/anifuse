@@ -9,18 +9,10 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "anicrop",
+    "loguru>=0.7.0",
     "numpy>=2.0.0",
     "opencv-python>=4.10.0",
-    "loguru>=0.7.0",
     "pillow>=12.3.0",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "pytest-cov>=5.0.0",
-    "ruff>=0.8.0",
-    "mypy>=1.10.0",
 ]
 
 [tool.uv.sources]
@@ -32,8 +24,32 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
-    "ruff>=0.16.5",
+    "autopep8>=2.3.2",
+    "mypy>=1.10.0",
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.9.0",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+norecursedirs = ["scripts", "scratch", ".venv"]
+markers = [
+    "slow: marca testes pesados ou demorados (desselecione com '-m \"not slow\"')",
+]
+
+[tool.ruff]
+line-length = 89
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+extend-select = ["PLC0415"]
+ignore = ["E501", "E741"]
+
+[tool.autopep8]
+max_line_length = 89
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/anifuse"]

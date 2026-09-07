@@ -32,7 +32,6 @@ test:
 
 # Roda a suíte de testes rápida excluindo testes lentos
 test_speed:
-	uv run ruff format tests/
 	uv run pytest -m "not slow" $(RUN_ARGS)
 
 # Roda os testes com relatório de cobertura HTML em 'htmlcov/'
@@ -47,9 +46,10 @@ mypy:
 lint:
 	uv run ruff check .
 
-# Formata todo o código-fonte com o ruff format
+# Formata o código com autopep8 e corrige linter com ruff
 format:
-	uv run ruff format .
+	uv run ruff check . --fix
+	uv run autopep8 --in-place --recursive --max-line-length 89 --ignore E501,E402,W503,W504 src/ tests/
 
 # ==============================================================================
 # Sincronização de Documentação do Motor Core (anicrop -> anifuse)
@@ -59,7 +59,10 @@ format:
 sync-docs:
 	@echo "==> Sincronizando documentação do anicrop em docs/anicrop/..."
 	@mkdir -p docs/anicrop
-	@if [ -d "../anicrop/docs" ]; then \
+	@if [ -d "../docs" ]; then \
+		cp -r ../docs/* docs/anicrop/ && \
+		echo "==> Documentação copiada com sucesso a partir do diretório local ../docs/"; \
+	elif [ -d "../anicrop/docs" ]; then \
 		cp -r ../anicrop/docs/* docs/anicrop/ && \
 		echo "==> Documentação copiada com sucesso a partir do diretório local ../anicrop/docs/"; \
 	else \
@@ -95,11 +98,12 @@ sync-main:
 	else \
 		RANGE="main..dev"; \
 	fi; \
-	CHANGES=$$(git log $$RANGE --oneline --no-merges --invert-grep --grep="bench" --grep="docs(plano)" src/ tests/ README.md pyproject.toml | sed 's/^[a-f0-9]* /- /'); \
+	CHANGES=$$(git log $$RANGE --oneline --no-merges --invert-grep --grep="bench" --grep="docs(plano)" src/ tests/ README.md pyproject.toml Makefile uv.lock | sed 's/^[a-f0-9]* /- /'); \
 	if [ -z "$$CHANGES" ]; then \
 		echo "Nenhuma alteração de produção para sincronizar."; \
 	else \
 		git checkout main && \
+		git rm -rf --ignore-unmatch src/ tests/ assets/ >/dev/null 2>&1 || true; \
 		git checkout dev -- src/ tests/ README.md assets/ pyproject.toml Makefile .gitignore .python-version uv.lock && \
 		git commit -m "release: sincroniza código de produção da dev" -m "$$CHANGES" -m "sync-point: $$CURRENT_DEV" && \
 		git checkout dev && \
