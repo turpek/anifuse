@@ -186,6 +186,10 @@ O `anifuse` consome o motor gráfico `anicrop`. Sempre que precisar consultar m�
 - **Votação em Histograma 4D (MODA 4D / GHT):** Extensão da MODA para o espaço afim 4D $(\theta, s, t_x, t_y)$ em 1 passo analítico.
 - **ECC (`cv2.findTransformECC`):** Otimização de correlação de intensidade direta (subpixel $0.01\text{px}$).
 
+### 8.6. Roadmap: Estimador de 1 Passo e Reativação de Rotação/Escala
+- **Plano Arquitetural:** `ScaleHandler` e `RotationHandler` foram projetados para atuar em conjunto com um estimador de 1 passo (como MODA 4D / GHT ou LMEDS/ECC analítico). Esse estimador fornecerá os parâmetros afins contínuos em um único passo analítico, permitindo que o `anicrop` aplique a rotação e escala nativamente na camada (`Layer.transform`) com amostragem única direta (*Single-Pass Resampling*), eliminando qualquer rasterização intermediária.
+- **Decisão Atual:** Até a implementação desse estimador unificado de 1 passo, `ScaleHandler` e `RotationHandler` foram temporariamente removidos do core de execução e seus respectivos testes marcados com `@pytest.mark.skip`. O foco atual está na translação pura e determinística (`HorizontalTranslationHandler`, `VerticalTranslationHandler` e `TranslationHandler`).
+
 ---
 
 ## 9. Referência aos Arquivos e Relatórios
