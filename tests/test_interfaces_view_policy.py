@@ -26,11 +26,11 @@ class _DummyConcretePolicy(ViewPolicy):
         incoming: Image,
         sections: Iterable[Section],
         frame_idx: int = 0,
-    ) -> tuple[AlignmentResult, np.ndarray]:
+    ) -> tuple[AlignmentResult, Image]:
         for sec in sections:
             return (
                 AlignmentResult(ref=sec.ref, motion=MotionEstimate(dx=10.0, dy=5.0)),
-                incoming[...],
+                incoming,
             )
         raise AlignmentError("No sections available")
 
@@ -99,9 +99,10 @@ def test_concrete_view_policy_implements_resolve_protocol():
     )
 
     policy = _DummyConcretePolicy()
-    alignment, returned_arr = policy.resolve(base_img, incoming_img, [sec])
+    alignment, returned_img = policy.resolve(base_img, incoming_img, [sec])
 
     assert isinstance(alignment, AlignmentResult)
-    assert isinstance(returned_arr, np.ndarray)
+    assert isinstance(returned_img, Image)
+    assert returned_img is incoming_img
     assert alignment.ref == sec.ref
     assert alignment.motion.dx == 10.0

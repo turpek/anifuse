@@ -4,14 +4,19 @@ from dataclasses import FrozenInstanceError
 
 import numpy as np
 import pytest
+from anicrop.enums import ImageFormat
+from anicrop.image import Image
 
 from anifuse.interfaces import Estimator, MotionEstimate
 
 
 class DummyEstimator(Estimator):
     def estimate(
-        self, ref: np.ndarray, incoming: np.ndarray
-    ) -> tuple[MotionEstimate, np.ndarray]:
+        self,
+        ref: Image,
+        incoming: Image,
+        mask: np.ndarray | None = None,
+    ) -> tuple[MotionEstimate, Image]:
         return MotionEstimate(dx=10.0, dy=-5.0), incoming
 
 
@@ -40,15 +45,16 @@ def test_motion_estimate_is_immutable():
         estimate.dx = 10.0  # type: ignore[misc]
 
 
-def test_concrete_estimator_returns_estimate_and_array():
+def test_concrete_estimator_returns_estimate_and_image():
     """Verify that concrete Estimator implementation returns expected tuple output."""
-    dummy_ref = np.zeros((50, 50), dtype=np.uint8)
-    dummy_incoming = np.ones((50, 50), dtype=np.uint8)
+    dummy_ref = Image.new((50, 50), ImageFormat.RGB)
+    dummy_incoming = Image.new((50, 50), ImageFormat.RGB)
     estimator = DummyEstimator()
 
-    estimate, result_arr = estimator.estimate(dummy_ref, dummy_incoming)
+    estimate, result_img = estimator.estimate(dummy_ref, dummy_incoming)
 
     assert isinstance(estimate, MotionEstimate)
     assert estimate.dx == 10.0
     assert estimate.dy == -5.0
-    assert result_arr is dummy_incoming
+    assert isinstance(result_img, Image)
+    assert result_img is dummy_incoming

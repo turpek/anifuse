@@ -14,14 +14,14 @@ class MaskView(ABC):
     @abstractmethod
     def get_mask(
         self, image: Image, frame_idx: int = 0
-    ) -> tuple[np.ndarray, np.ndarray | None]:
-        """Extract frame array and optional exclusion mask from an Image.
+    ) -> tuple[Image, np.ndarray | None]:
+        """Extract frame Image and optional exclusion mask from an Image.
 
         Args:
             image: Input Image instance from anicrop.
             frame_idx: Zero-based frame index in the sequence.
 
         Returns:
-            A tuple of (frame_array, mask_array_or_none).
+            A tuple of (frame_image, mask_array_or_none).
         """
         pass

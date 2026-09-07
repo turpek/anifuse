@@ -129,7 +129,7 @@ def test_image_sequence_reader_from_dir_factory(synthetic_image_dir: Path):
 
 def test_image_sequence_reader_from_paths_factory(synthetic_image_dir: Path):
     """Verify that ImageSequenceReader.from_paths normalizes paths and constructs reader."""
-    paths = [
+    paths: list[Path | str] = [
         str(synthetic_image_dir / "frame_02.png"),
         synthetic_image_dir / "frame_01.png",
     ]
