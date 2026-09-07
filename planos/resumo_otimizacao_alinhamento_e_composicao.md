@@ -56,6 +56,16 @@ Durante o desenvolvimento do motor de reconstrução panorâmica de animes (*Tat
 
 ---
 
+### 2.5. Calibração de Sensibilidade de Detecção (`fast_threshold`)
+- **Problema de Contraste em Animes:** O OpenCV utiliza `fastThreshold = 20` por padrão. Enquanto esse valor filtra ruído em fotos reais, em ilustrações de anime (cel-shading e gradientes suaves de fundo com deltas de $7 \sim 15$ unidades de brilho), o detector descarta o cenário e retém apenas contornos escuros de personagens móveis.
+- **Sintoma:** Em quadros com fundo estático e personagem animado (ex: amostra `2329`, frames `018` e `019`), o consenso de pontos no fundo caía para apenas $53\%$, gerando confiança espúria baixa ($0.52$) e disparando fallbacks incorretos.
+- **Solução & Calibração Padrão:**
+  - Redução do limiar padrão para **`fast_threshold = 10`** no motor `anifuse`.
+  - Na amostra `2329`, o número de keypoints saltou de **51 para 539**, os matches válidos de **27 para 205**, e os inliers no fundo foram **$100\%$ (40/40)**, elevando a confiança para **`1.000`**.
+  - Documentação detalhada e matriz de valores por tipo de cena consolidada em [`planos/calibracao_fast_threshold.md`](file:///home/gui/python/anifuse/planos/calibracao_fast_threshold.md).
+
+---
+
 ## 3. Tabela Comparativa de Resultados em Lote
 
 | Sequência de Anime | Frames | Dimensões Finais | Pixels Semi-Transparentes | Tempo Total | Arquivo Gerado |
@@ -70,5 +80,6 @@ Durante o desenvolvimento do motor de reconstrução panorâmica de animes (*Tat
 
 ## 4. Estrutura dos Arquivos Criados
 
+- [`planos/calibracao_fast_threshold.md`](file:///home/gui/python/anifuse/planos/calibracao_fast_threshold.md): Guia técnico aprofundado com a matriz de calibração do `fast_threshold` por tipo de animação e mídia.
 - [`scripts/anicrop_stitcher.py`](file:///home/gui/python/anifuse/scripts/anicrop_stitcher.py): Módulo de costura completo utilizando $100\%$ `anicrop` (`CanvasRender`, `Composer`, `SOLID_FILL`, Single-Pass Resampling e fatiamento por `Region`).
 - [`scripts/flatten_pipeline.py`](file:///home/gui/python/anifuse/scripts/flatten_pipeline.py): Pipeline iterativo de referência para benchmarking e validação comparativa de algoritmos de alinhamento.

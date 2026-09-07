@@ -6,9 +6,9 @@ Este documento centraliza todos os objetivos arquiteturais, otimizações e o pr
 
 ## 📋 Lista de Tarefas (Status Atual)
 
-- [x] 1. Configuração e thresholds globais (`Config`).
+- [x] 1. Configuração e thresholds globais (`Config`: rotate, scale, translation, `fast_threshold`).
 - [x] 2. Subsistema de máscaras sem cópia (`MaskView`: Default, Static, Sequence, Dynamic, Composite).
-- [x] 3. Estimadores de movimento e rotação via ORB e MODA (`OrbTranslationEstimator`, `OrbTransformEstimator`).
+- [x] 3. Estimadores de movimento e rotação via ORB e MODA (`OrbTranslationEstimator`, `OrbTransformEstimator`, `OrbScaleEstimator`, `OrbRotationEstimator`).
 - [x] 4. Políticas de busca de janelas ativas (`Section`, `CrossSections`, `AdaptiveViewPolicy`).
 - [x] 5. Handlers de transformação geométrica em camadas do anicrop (`RotationHandler`, `ScaleHandler`, `TranslationHandler`, `HorizontalTranslationHandler`, `VerticalTranslationHandler`).
 - [x] 6. Subsistema de leitura de imagens (`PathResolver`, `ReadStrategy`, `ImageSequenceReader`).

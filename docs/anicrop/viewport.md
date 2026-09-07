@@ -55,9 +55,9 @@ A classe `Viewport` representa o retângulo da janela de exibição (ex: um pain
 - **Descrição**: Acessa ou altera o objeto `Scale` representando o zoom atual da câmera.
 - **Coerção Flexível**: O setter aceita diretamente escalares numéricos (`float | int`), tuplas `(sx, sy)` ou instâncias explícitas de `Scale`.
   ```python
-  viewport.scale = 2.0  # Zoom uniforme 2x
+  viewport.scale = 2.0        # Zoom uniforme 2x
   viewport.scale = (2.0, 1.5)  # Escala anisotrópica
-  viewport.scale *= 1.5  # Multiplicação in-place
+  viewport.scale *= 1.5        # Multiplicação in-place
   ```
 - **Retorno**: `Scale`.
 

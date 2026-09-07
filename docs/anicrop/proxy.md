@@ -177,7 +177,6 @@ A arquitetura de proxies expõe três pontos de extensão chave (hooks protegido
   ```python
   class InteractiveToolProxy(StrategyProxy):
       """Proxy de estratégia para ferramenta interativa com fusão contínua."""
-
       def _history_context(self, action_name: str) -> Any:
           history = object.__getattribute__(self, "_history")
           return history.merge_continuous()
@@ -245,7 +244,6 @@ Para estender a infraestrutura reativa com uma nova entidade de domínio, siga a
 ```python
 class Camera:
     """Entidade de domínio pura (sem histórico)."""
-
     def __init__(self, zoom: float = 1.0, fov: float = 60.0):
         self.zoom = zoom
         self.fov = fov
@@ -259,7 +257,6 @@ class Camera:
 ```python
 from anicrop.reactive.base import BaseHistoryProxy
 from anicrop.command import AdaptiveCommand
-
 
 class ProxyCamera(BaseHistoryProxy[Camera]):
     """Proxy reativo para Camera."""
@@ -331,7 +328,6 @@ A classe base abstrata `Command` (`anicrop.command.Command`) define o contrato d
 ```python
 from typing import Any
 from anicrop.command import Command
-
 
 class CameraZoomCommand(Command):
     """Comando rastreador de delta de zoom de câmera."""

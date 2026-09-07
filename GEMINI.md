@@ -166,29 +166,28 @@ O `anifuse` consome o motor gráfico `anicrop`. Sempre que precisar consultar m�
 - **Problema resolvido:** O `HARD_MASKING` substituía pixels opacos por valores fracionários do antialiasing de rotação, espalhando mais de $500.000$ pixels semitransparentes.
 - **Padrão definitivo:** Utilizar `BlendMode.SOLID_FILL` (*Base-First*). O Canvas consolidado ($\alpha \ge 250$) é imutável e o novo frame preenche lacunas com $\alpha = 255$ puro (**`0` pixels semi-transparentes residuais**).
 
-### 8.3. Diagnóstico e Resolução de Distorções e Deriva (Drift)
-- **Causa da deriva:** O estimador afim contínuo detectava micro-escala ($0.9995$). Em 99 frames, $0.9995^{99} = 0.9724$ encolhia a cena em $2.8\%$ e acumulava $4.34^\circ$ de inclinação espúria.
-- **Viés de Mínimos Quadrados:** O RANSAC $L_2$ sofre viés puxado por personagens em movimento no primeiro plano. A **MODA discreta de deslocamentos (`mode(diff)`)** trava o cenário de fundo estático com $100\%$ de precisão.
-- **Papel da Rotação Prévia:** A rotação prévia do frame coloca o grid de pixels ortogonal e paralelo ao Canvas, permitindo que a MODA discreta de inteiros funcione com precisão absoluta.
+### 8.3. Alinhamento Robusto por Translação Pura e MODA Discreta
+- **Viés de Mínimos Quadrados:** O RANSAC $L_2$ contínuo sofre viés puxado por personagens em movimento no primeiro plano. A **MODA discreta de deslocamentos (`mode(diff)`)** trava o cenário de fundo estático com $100\%$ de precisão.
+- **Foco Estrito em Translação:** O motor opera exclusivamente com estimativa e aplicação de translação determinística 2D (`HorizontalTranslationHandler`, `VerticalTranslationHandler` e `TranslationHandler`). Quaisquer estimadores ou handlers de rotação e escala foram totalmente removidos do core ativo.
+- **Amostragem Única Direta (Single-Pass Resampling):** O `Layer` na composição recebe sempre a **imagem original pura (`frame.image`)**, sem rotações ou transformações intermediárias destrutivas.
 
-### 8.4. Amostragem Única Direta (Single-Pass Resampling)
-- **Problema de qualidade:** Interpolar a imagem para girar e depois interpolar novamente no `flatten` degradava a nitidez do traço original.
-- **Solução implementada no [`scripts/anicrop_stitcher.py`](file:///home/gui/python/anifuse/scripts/anicrop_stitcher.py):**
-  1. A rasterização `img_rot = CanvasRender().render_layer(layer_temp)` é usada **apenas como buffer de consulta leve para o ORB**.
-  2. O `Layer` final na composição recebe a **imagem original pura do disco (`img_next`)**.
-  3. A translação compensa a expansão da caixa delimitadora AABB:
-     $$\text{canvas\_x} = \text{layer1.global\_region.top\_left.x} + \text{view.top\_left.x} - delx\_rot - \text{layer\_temp.global\_region.top\_left.x}$$
-     $$\text{canvas\_y} = \text{layer1.global_region.top\_left.y} + \text{view.top\_left.y} - dely\_rot - \text{layer\_temp.global_region.top\_left.y}$$
-  4. O `flatten([layer2, layer1], interp=InterpMode.LANCZOS)` amostra o frame original **uma única vez**, preservando $100\%$ da fidelidade visual.
-
-### 8.5. Algoritmos Alternativos de 1 Passo Estudados
-- **LMEDS (Least Median of Squares):** `cv2.estimateAffinePartial2D(pts2, pts1, method=cv2.LMEDS)` — rápido ($\approx 21\text{s}$), minimiza a mediana dos resíduos (tolerante a até 50% de outliers).
-- **Votação em Histograma 4D (MODA 4D / GHT):** Extensão da MODA para o espaço afim 4D $(\theta, s, t_x, t_y)$ em 1 passo analítico.
-- **ECC (`cv2.findTransformECC`):** Otimização de correlação de intensidade direta (subpixel $0.01\text{px}$).
-
-### 8.6. Roadmap: Estimador de 1 Passo e Reativação de Rotação/Escala
-- **Plano Arquitetural:** `ScaleHandler` e `RotationHandler` foram projetados para atuar em conjunto com um estimador de 1 passo (como MODA 4D / GHT ou LMEDS/ECC analítico). Esse estimador fornecerá os parâmetros afins contínuos em um único passo analítico, permitindo que o `anicrop` aplique a rotação e escala nativamente na camada (`Layer.transform`) com amostragem única direta (*Single-Pass Resampling*), eliminando qualquer rasterização intermediária.
-- **Decisão Atual:** Até a implementação desse estimador unificado de 1 passo, `ScaleHandler` e `RotationHandler` foram temporariamente removidos do core de execução e seus respectivos testes marcados com `@pytest.mark.skip`. O foco atual está na translação pura e determinística (`HorizontalTranslationHandler`, `VerticalTranslationHandler` e `TranslationHandler`).
+### 8.4. Estimadores de Escala, Rotação e Desacoplamento Afim (Consolidado)
+- **Descoberta do Piso de Ruído vs. Sinal Real:**
+  - Ruído típico de translação pura: $\|1-s\| \le 0.00057$ e $|\theta| \le 0.082^\circ$.
+  - Sinal real de zoom (amostra `2435_kurage`): $\|1-s\| \approx 0.00208$ a $0.00221$ por frame (cerca de $10\times$ o ruído).
+  - Limiares calibrados em `config.py`: `scale_threshold = 0.0010`, `rotate_threshold = 0.10` e `fast_threshold = 10` (calibrado para sensibilidade a traços suaves e gradientes de anime).
+- **Desacoplamento de Rotação e Escala:**
+  - Quando há apenas escala (`has_scale and not has_rotation`), qualquer ângulo é ruído e DEVE ser forçado a $0.0^\circ$.
+  - A escala pura utiliza `resize_image` (`cv2.resize` com Lanczos), mantendo os eixos perfeitamente ortogonais, sem o antialiasing destrutivo ou expansão de bounding-box do `warpAffine`.
+- **Família de Estimadores ORB Especializados:**
+  - `OrbTranslationEstimator`: Translação 2D pura direta via moda discreta.
+  - `OrbScaleEstimator`: Especializado em zoom de câmera (`angle = 0.0`, usa `resize_image`).
+  - `OrbRotationEstimator`: Especializado em roll / rotação de câmera.
+  - `OrbTransformEstimator`: Estimador geral desacoplado (se apenas escala, usa `resize_image`).
+  - Construtores (`__init__`) possuem fallback transparente para o `config` quando os limiares forem omitidos; o método de alto nível `SceneStitcher.from_default()` recebe `rotate_threshold`, `scale_threshold`, `translation_threshold` e `fast_threshold` como parâmetros de conveniência.
+- **Benchmark Validado (Amostra 2435, 30 frames):**
+  - Legado: $2033 \times 1266$
+  - `OrbScaleEstimator`: $2036 \times 1262$ (diferença residual de apenas 3 a 4px, ortogonalidade e nitidez preservadas).
 
 ---
 
@@ -197,3 +196,4 @@ O `anifuse` consome o motor gráfico `anicrop`. Sempre que precisar consultar m�
 - **Relatório Completo com Benchmarks:** [`planos/resumo_otimizacao_alinhamento_e_composicao.md`](file:///home/gui/python/anifuse/planos/resumo_otimizacao_alinhamento_e_composicao.md)
 - **Módulo de Costura Puro anicrop:** [`scripts/anicrop_stitcher.py`](file:///home/gui/python/anifuse/scripts/anicrop_stitcher.py)
 - **Pipeline Iterativo de Referência:** [`scripts/flatten_pipeline.py`](file:///home/gui/python/anifuse/scripts/flatten_pipeline.py)
+
