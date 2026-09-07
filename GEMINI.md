@@ -184,7 +184,7 @@ O `anifuse` consome o motor gráfico `anicrop`. Sempre que precisar consultar m�
   - `OrbScaleEstimator`: Especializado em zoom de câmera (`angle = 0.0`, usa `resize_image`).
   - `OrbRotationEstimator`: Especializado em roll / rotação de câmera.
   - `OrbTransformEstimator`: Estimador geral desacoplado (se apenas escala, usa `resize_image`).
-  - Construtores (`__init__`) possuem fallback transparente para o `config` quando os limiares forem omitidos; o método de alto nível `SceneStitcher.from_default()` recebe `rotate_threshold`, `scale_threshold`, `translation_threshold` e `fast_threshold` como parâmetros de conveniência.
+  - Construtores (`__init__`) são 100% desacoplados de variáveis globais, recebendo limiares diretamente como parâmetros explícitos com defaults calibrados (`fast_threshold=10`, `scale_threshold=0.0010`, `rotate_threshold=0.10`, `threshold=0.0`); o método de alto nível `SceneStitcher.from_default()` expõe esses mesmos parâmetros explicitamente.
 - **Benchmark Validado (Amostra 2435, 30 frames):**
   - Legado: $2033 \times 1266$
   - `OrbScaleEstimator`: $2036 \times 1262$ (diferença residual de apenas 3 a 4px, ortogonalidade e nitidez preservadas).
