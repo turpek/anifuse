@@ -10,6 +10,7 @@ class Config:
     rotate_threshold: float = 0.20
     scale_threshold: float = 0.006
     translation_threshold: float = 0.0
+    batch_size: int = 15
 
 
 config = Config()
