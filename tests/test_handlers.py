@@ -165,3 +165,21 @@ def test_vertical_translation_handler_locks_dx_to_zero():
 
     assert result is None
     assert layer.global_region.top_left == (500.0, 630.0)
+
+
+def test_handlers_default_and_custom_parameters():
+    """Verify that handlers have default threshold 0.0 and accept custom threshold."""
+    handler_default = TranslationHandler()
+    handler_custom = TranslationHandler(threshold=2.5)
+    assert handler_default.threshold == 0.0
+    assert handler_custom.threshold == 2.5
+
+    h_default = HorizontalTranslationHandler()
+    h_custom = HorizontalTranslationHandler(threshold=1.5)
+    assert h_default.threshold == 0.0
+    assert h_custom.threshold == 1.5
+
+    v_default = VerticalTranslationHandler()
+    v_custom = VerticalTranslationHandler(threshold=3.0)
+    assert v_default.threshold == 0.0
+    assert v_custom.threshold == 3.0

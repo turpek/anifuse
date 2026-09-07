@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from anifuse.config import config
 from anifuse.interfaces.handler import TransformHandler
 
 if TYPE_CHECKING:
@@ -16,9 +15,9 @@ if TYPE_CHECKING:
 class TranslationHandler(TransformHandler):
     """Translates target layer to aligned canvas coordinates compensating for AABB rotation offsets."""
 
-    def __init__(self, threshold: float | None = None) -> None:
+    def __init__(self, threshold: float = 0.0) -> None:
         """Initialize handler with translation deadzone threshold."""
-        self.threshold = config.translation_threshold if threshold is None else threshold
+        self.threshold = threshold
 
     def apply(self, target: Layer, alignment: AlignmentResult) -> None:
         """Translate target layer to canvas coordinates compensating for AABB rotation offsets."""
@@ -39,9 +38,9 @@ class TranslationHandler(TransformHandler):
 class HorizontalTranslationHandler(TransformHandler):
     """Translates target layer along the X axis only, forcing dy to 0.0."""
 
-    def __init__(self, threshold: float | None = None) -> None:
+    def __init__(self, threshold: float = 0.0) -> None:
         """Initialize handler with translation deadzone threshold."""
-        self.threshold = config.translation_threshold if threshold is None else threshold
+        self.threshold = threshold
 
     def apply(self, target: Layer, alignment: AlignmentResult) -> None:
         """Translate target layer horizontally, keeping dy locked to 0.0."""
@@ -57,9 +56,9 @@ class HorizontalTranslationHandler(TransformHandler):
 class VerticalTranslationHandler(TransformHandler):
     """Translates target layer along the Y axis only, forcing dx to 0.0."""
 
-    def __init__(self, threshold: float | None = None) -> None:
+    def __init__(self, threshold: float = 0.0) -> None:
         """Initialize handler with translation deadzone threshold."""
-        self.threshold = config.translation_threshold if threshold is None else threshold
+        self.threshold = threshold
 
     def apply(self, target: Layer, alignment: AlignmentResult) -> None:
         """Translate target layer vertically, keeping dx locked to 0.0."""

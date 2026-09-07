@@ -11,7 +11,6 @@ import anicrop
 from anicrop.enums import ImageFormat
 from anicrop.image import Image
 
-from anifuse.config import config
 from anifuse.interfaces.reader import (
     Frame,
     FrameReader,
@@ -72,11 +71,9 @@ class StreamReadStrategy(ReadStrategy):
 class BatchedReadStrategy(ReadStrategy):
     """Batched buffer strategy (ideal for OpenCV and batch filesystem read-ahead)."""
 
-    def __init__(self, batch_size: int | None = None) -> None:
-        """Initialize strategy with configured batch chunk size."""
-        self.batch_size = (
-            config.batch_size if batch_size is None else max(1, batch_size)
-        )
+    def __init__(self, batch_size: int = 15) -> None:
+        """Initialize strategy with batch chunk size."""
+        self.batch_size = max(1, batch_size)
 
     def read(
         self,
