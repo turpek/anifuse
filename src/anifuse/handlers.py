@@ -80,3 +80,39 @@ class TranslationHandler(TransformHandler):
         )
         target_offset = alignment.ref - target.global_region.top_left - (dx, dy)
         target.transform.translate(*target_offset.top_left)
+
+
+class HorizontalTranslationHandler(TransformHandler):
+    """Translates target layer along the X axis only, forcing dy to 0.0."""
+
+    def __init__(self, threshold: float | None = None) -> None:
+        """Initialize handler with translation deadzone threshold."""
+        self.threshold = config.translation_threshold if threshold is None else threshold
+
+    def apply(self, target: Layer, alignment: AlignmentResult) -> None:
+        """Translate target layer horizontally, keeping dy locked to 0.0."""
+        dx = (
+            alignment.motion.dx
+            if abs(alignment.motion.dx) > self.threshold
+            else 0.0
+        )
+        target_offset = alignment.ref - target.global_region.top_left - (dx, 0.0)
+        target.transform.translate(*target_offset.top_left)
+
+
+class VerticalTranslationHandler(TransformHandler):
+    """Translates target layer along the Y axis only, forcing dx to 0.0."""
+
+    def __init__(self, threshold: float | None = None) -> None:
+        """Initialize handler with translation deadzone threshold."""
+        self.threshold = config.translation_threshold if threshold is None else threshold
+
+    def apply(self, target: Layer, alignment: AlignmentResult) -> None:
+        """Translate target layer vertically, keeping dx locked to 0.0."""
+        dy = (
+            alignment.motion.dy
+            if abs(alignment.motion.dy) > self.threshold
+            else 0.0
+        )
+        target_offset = alignment.ref - target.global_region.top_left - (0.0, dy)
+        target.transform.translate(*target_offset.top_left)

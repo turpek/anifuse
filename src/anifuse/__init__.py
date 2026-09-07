@@ -8,9 +8,11 @@ from anifuse.accumulator import (
 )
 from anifuse.config import config
 from anifuse.handlers import (
+    HorizontalTranslationHandler,
     RotationHandler,
     ScaleHandler,
     TranslationHandler,
+    VerticalTranslationHandler,
 )
 from anifuse.interfaces import (
     AlignmentError,
@@ -63,6 +65,7 @@ __all__ = [
     "Frame",
     "FrameAccumulator",
     "FrameReader",
+    "HorizontalTranslationHandler",
     "ImageSequenceReader",
     "LastOnTopAccumulator",
     "ListPathResolver",
@@ -82,6 +85,7 @@ __all__ = [
     "StreamReadStrategy",
     "TransformHandler",
     "TranslationHandler",
+    "VerticalTranslationHandler",
     "ViewPolicy",
     "config",
     "create_accumulator",

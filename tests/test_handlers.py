@@ -5,9 +5,11 @@ from anicrop.layer import Layer
 from anicrop.spatial import Region
 
 from anifuse.handlers import (
+    HorizontalTranslationHandler,
     RotationHandler,
     ScaleHandler,
     TranslationHandler,
+    VerticalTranslationHandler,
 )
 from anifuse.interfaces import AlignmentResult, MotionEstimate
 
@@ -119,3 +121,35 @@ def test_translation_handler_respects_threshold():
 
     assert result is None
     assert layer.global_region.top_left == (100.0, 100.0)
+
+
+def test_horizontal_translation_handler_locks_dy_to_zero():
+    """Verify that HorizontalTranslationHandler applies dx while forcing dy to zero."""
+    layer = Layer(Region.from_rect(0, 0, 200, 200))
+    ref_region = Region.from_rect(500, 600, 200, 200)
+    alignment = AlignmentResult(
+        ref=ref_region,
+        motion=MotionEstimate(dx=50.0, dy=-30.0),
+    )
+    handler = HorizontalTranslationHandler()
+
+    result = handler.apply(layer, alignment)
+
+    assert result is None
+    assert layer.global_region.top_left == (450.0, 600.0)
+
+
+def test_vertical_translation_handler_locks_dx_to_zero():
+    """Verify that VerticalTranslationHandler applies dy while forcing dx to zero."""
+    layer = Layer(Region.from_rect(0, 0, 200, 200))
+    ref_region = Region.from_rect(500, 600, 200, 200)
+    alignment = AlignmentResult(
+        ref=ref_region,
+        motion=MotionEstimate(dx=50.0, dy=-30.0),
+    )
+    handler = VerticalTranslationHandler()
+
+    result = handler.apply(layer, alignment)
+
+    assert result is None
+    assert layer.global_region.top_left == (500.0, 630.0)
