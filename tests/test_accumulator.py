@@ -14,6 +14,7 @@ from anifuse.accumulator import (
     LastOnTopAccumulator,
     create_accumulator,
 )
+from anifuse.interfaces.estimator import MotionEstimate
 from anifuse.interfaces.stitcher import StackOrder
 
 
@@ -41,8 +42,9 @@ def test_first_on_top_accumulator_keeps_base_pixels(
     red_layer: Layer, blue_layer: Layer
 ):
     """Verify that FirstOnTopAccumulator preserves initial frame pixels in overlap regions."""
+    motion = MotionEstimate(dx=50.0, dy=50.0, confidence=1.0)
     accumulator = FirstOnTopAccumulator(red_layer)
-    accumulator.push(blue_layer)
+    accumulator.push(blue_layer, motion)
     result_img = accumulator.result()
     arr = result_img[...]
 
@@ -55,8 +57,9 @@ def test_last_on_top_accumulator_overwrites_with_incoming_pixels(
     red_layer: Layer, blue_layer: Layer
 ):
     """Verify that LastOnTopAccumulator overwrites overlap regions with incoming frame pixels."""
+    motion = MotionEstimate(dx=50.0, dy=50.0, confidence=1.0)
     accumulator = LastOnTopAccumulator(red_layer)
-    accumulator.push(blue_layer)
+    accumulator.push(blue_layer, motion)
     result_img = accumulator.result()
     arr = result_img[...]
 
@@ -69,8 +72,9 @@ def test_dual_accumulator_produces_both_composites(
     red_layer: Layer, blue_layer: Layer
 ):
     """Verify that DualAccumulator outputs both first-on-top and last-on-top composites."""
+    motion = MotionEstimate(dx=50.0, dy=50.0, confidence=1.0)
     accumulator = DualAccumulator(red_layer)
-    accumulator.push(blue_layer)
+    accumulator.push(blue_layer, motion)
     first_img, last_img = accumulator.result()
 
     assert first_img.size == (150, 150)

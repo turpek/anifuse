@@ -1,5 +1,10 @@
 """Interfaces and abstract base classes for anifuse."""
 
+from anifuse.interfaces.effect import (
+    AnifuseEffect,
+    BorderSide,
+    LayerTarget,
+)
 from anifuse.interfaces.estimator import Estimator, MotionEstimate
 from anifuse.interfaces.handler import TransformHandler
 from anifuse.interfaces.mask import MaskView
@@ -25,10 +30,13 @@ from anifuse.interfaces.view_policy import (
 __all__ = [
     "AlignmentError",
     "AlignmentResult",
+    "AnifuseEffect",
+    "BorderSide",
     "Estimator",
     "Frame",
     "FrameAccumulator",
     "FrameReader",
+    "LayerTarget",
     "MaskView",
     "MotionEstimate",
     "PathResolver",

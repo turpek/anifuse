@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Self
 
 from anicrop.enums import BlendMode, InterpMode
@@ -17,6 +18,7 @@ from anifuse.view_policy import AdaptiveViewPolicy, CrossSections
 if TYPE_CHECKING:
     from anicrop.spatial import Region
 
+    from anifuse.interfaces.effect import AnifuseEffect
     from anifuse.interfaces.estimator import Estimator
     from anifuse.interfaces.handler import TransformHandler
     from anifuse.interfaces.mask import MaskView
@@ -31,17 +33,11 @@ class SceneStitcher(Stitcher):
         self,
         handlers: list[TransformHandler],
         view_policy: ViewPolicy,
-        stack_order: StackOrder = StackOrder.BOTH,
-        blend_mode: BlendMode = BlendMode.SOLID_FILL,
-        interp: InterpMode = InterpMode.LANCZOS,
         on_progress: ProgressCallback | None = None,
     ) -> None:
         """Initialize SceneStitcher with explicit transformation handlers and view policy."""
         self.handlers: list[TransformHandler] = list(handlers)
         self.view_policy = view_policy
-        self.stack_order = stack_order
-        self.blend_mode = blend_mode
-        self.interp = interp
         self.on_progress = on_progress
 
     @classmethod
@@ -55,8 +51,6 @@ class SceneStitcher(Stitcher):
         scale_threshold: float = 0.0010,
         translation_threshold: float = 0.0,
         fast_threshold: int = 10,
-        stack_order: StackOrder = StackOrder.BOTH,
-        blend_mode: BlendMode = BlendMode.SOLID_FILL,
         interp: InterpMode = InterpMode.LANCZOS,
         on_progress: ProgressCallback | None = None,
     ) -> Self:
@@ -84,13 +78,17 @@ class SceneStitcher(Stitcher):
         return cls(
             handlers=actual_handlers,
             view_policy=policy,
-            stack_order=stack_order,
-            blend_mode=blend_mode,
-            interp=interp,
             on_progress=on_progress,
         )
 
-    def stitch(self, reader: FrameReader) -> Image | tuple[Image, Image]:
+    def stitch(
+        self,
+        reader: FrameReader,
+        stack_order: StackOrder = StackOrder.BOTH,
+        effects: Sequence[AnifuseEffect] = (),
+        blend_mode: BlendMode = BlendMode.SOLID_FILL,
+        interp: InterpMode = InterpMode.LANCZOS,
+    ) -> Image | tuple[Image, Image]:
         """Stitch frames supplied by reader into panoramic composite image(s)."""
         frame_iter = iter(reader)
         try:
@@ -102,10 +100,10 @@ class SceneStitcher(Stitcher):
         initial_layer = Layer(
             first_frame.image,
             name=f"frame_{first_frame.idx}",
-            blend_mode=self.blend_mode,
+            blend_mode=blend_mode,
         )
         accumulator = create_accumulator(
-            self.stack_order, initial_layer, interp=self.interp
+            stack_order, initial_layer, interp=interp, effects=effects
         )
         last_region: Region = initial_layer.global_region
 
@@ -123,12 +121,12 @@ class SceneStitcher(Stitcher):
             layer2 = Layer(
                 ready_image,
                 name=f"frame_{frame.idx}",
-                blend_mode=self.blend_mode,
+                blend_mode=blend_mode,
             )
             for handler in self.handlers:
                 handler.apply(layer2, alignment)
 
-            accumulator.push(layer2)
+            accumulator.push(layer2, alignment.motion)
             last_region = layer2.global_region
 
             if self.on_progress is not None:

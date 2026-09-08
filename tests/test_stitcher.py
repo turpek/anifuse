@@ -96,10 +96,9 @@ def test_stitch_single_frame_returns_image(synthetic_frame: Frame):
     stitcher = SceneStitcher(
         handlers=[TranslationHandler()],
         view_policy=_MockViewPolicy(),
-        stack_order=StackOrder.FIRST_ON_TOP,
     )
 
-    result = stitcher.stitch(reader)
+    result = stitcher.stitch(reader, stack_order=StackOrder.FIRST_ON_TOP)
 
     assert isinstance(result, Image)
     assert result.size == (100, 100)
@@ -111,10 +110,9 @@ def test_stitch_single_frame_with_both_returns_tuple(synthetic_frame: Frame):
     stitcher = SceneStitcher(
         handlers=[TranslationHandler()],
         view_policy=_MockViewPolicy(),
-        stack_order=StackOrder.BOTH,
     )
 
-    result = stitcher.stitch(reader)
+    result = stitcher.stitch(reader, stack_order=StackOrder.BOTH)
 
     assert isinstance(result, tuple)
     assert len(result) == 2
@@ -130,10 +128,9 @@ def test_stitch_multi_frame_expands_composite_canvas(
     stitcher = SceneStitcher(
         handlers=[TranslationHandler()],
         view_policy=_MockViewPolicy(dx=20.0, dy=0.0),
-        stack_order=StackOrder.FIRST_ON_TOP,
     )
 
-    result = stitcher.stitch(reader)
+    result = stitcher.stitch(reader, stack_order=StackOrder.FIRST_ON_TOP)
 
     assert isinstance(result, Image)
     assert result.size[0] > 100
@@ -148,10 +145,9 @@ def test_stitch_multi_frame_with_both_returns_image_pair(
     stitcher = SceneStitcher(
         handlers=[TranslationHandler()],
         view_policy=_MockViewPolicy(dx=15.0, dy=0.0),
-        stack_order=StackOrder.BOTH,
     )
 
-    result = stitcher.stitch(reader)
+    result = stitcher.stitch(reader, stack_order=StackOrder.BOTH)
 
     assert isinstance(result, tuple)
     assert len(result) == 2
@@ -187,7 +183,6 @@ def test_from_default_configures_default_handlers_and_policy():
 
     assert len(stitcher.handlers) == 1
     assert isinstance(stitcher.handlers[0], TranslationHandler)
-    assert stitcher.stack_order == StackOrder.BOTH
 
 
 def test_from_default_forwards_threshold_parameters():
