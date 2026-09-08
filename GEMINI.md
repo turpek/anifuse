@@ -189,6 +189,16 @@ O `anifuse` consome o motor gráfico `anicrop`. Sempre que precisar consultar m�
   - Legado: $2033 \times 1266$
   - `OrbScaleEstimator`: $2036 \times 1262$ (diferença residual de apenas 3 a 4px, ortogonalidade e nitidez preservadas).
 
+### 8.5. Sistema de Efeitos e Corte Seco de Borda (`BorderCutEffect`)
+- **Protocolo `AnifuseEffect` e `LayerTarget`:** Efeitos de composição gráfica implementam `update(top: Layer, bottom: Layer, motion: MotionEstimate)` e indicam seu alvo de aplicação (`TOP`, `BOTTOM` ou `BOTH`).
+- **Orquestração Centralizada no `Accumulator`:** O acumulador é a entidade que gerencia o ciclo de vida dos efeitos (`apply_effects` $\to$ `flatten` $\to$ `clear_effects`), isolando fluxos no `DualAccumulator` e mapeando o referencial correto de `top`/`bottom`.
+- **Separação Arquitetural Motor vs. Tarefa:** O `SceneStitcher` configura a infraestrutura fixa de visão computacional (`handlers`, `view_policy`, `on_progress`). Parâmetros variáveis por vídeo (`stack_order`, `effects`, `blend_mode`, `interp`) são passados diretamente na chamada de `stitch()`.
+- **Corte Seco de Borda (`BorderCutEffect`):**
+  - Alvo fixo na camada do topo (`LayerTarget.TOP`) para revelar a camada límpida de baixo.
+  - Extrai `axis_y, axis_x = overlap.to_slice()` e reaproveita o eixo intacto para fatiar in-place no canal alfa (`arr[sy, sx, 3] = 0`), com proteção `min` contra sobreposições finas.
+  - Confinamento estrito à sobreposição: nunca abre furos em áreas de novo cenário.
+  - Suporta detecção automática de direção via $\Delta X, \Delta Y = (\text{top} - \text{bottom}).\text{top\_left}$, corte em "L" para movimentos diagonais e espessuras manuais independentes por borda.
+
 ---
 
 ## 9. Referência aos Arquivos e Relatórios
