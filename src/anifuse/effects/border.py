@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
+from anicrop.composition import flatten
 
 from anifuse.config import config
 from anifuse.interfaces.effect import AnifuseEffect, LayerTarget
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
     from anicrop.effect import Effect
     from anicrop.image import Image
     from anicrop.layer import Layer
+    from anicrop.spatial import Region
 
     from anifuse.interfaces.estimator import MotionEstimate
 
@@ -31,6 +33,7 @@ class BorderCutEffect(AnifuseEffect):
         right: int | None = None,
         top: int | None = None,
         bottom: int | None = None,
+        min_alpha: int = 250,
     ) -> None:
         """Initialize border cut effect with uniform or per-side thickness.
 
@@ -41,6 +44,8 @@ class BorderCutEffect(AnifuseEffect):
             right: Explicit cut thickness in pixels for the right edge.
             top: Explicit cut thickness in pixels for the top edge.
             bottom: Explicit cut thickness in pixels for the bottom edge.
+            min_alpha: Minimum opacity threshold for the underlying bottom layer to allow
+                cutting. Prevents creating transparent tears/holes in unrendered voids.
         """
         self.cut_size = (
             cut_size if cut_size is not None else config.border_cut_size
@@ -55,9 +60,11 @@ class BorderCutEffect(AnifuseEffect):
             ]
             if val is not None and val > 0
         }
+        self.min_alpha = min_alpha
         self._slices: list[tuple[slice, slice]] = []
         self._lines: list[tuple[tuple[int, int], tuple[int, int], int]] = []
         self._overlap_slice: tuple[slice, slice] | None = None
+        self._bottom_mask: np.ndarray | None = None
 
     def get_padding(self) -> tuple[int, int, int, int]:
         """Return zero padding as border cutting does not expand bounds."""
@@ -73,18 +80,26 @@ class BorderCutEffect(AnifuseEffect):
         bottom: Layer,
         motion: MotionEstimate,
     ) -> None:
-        """Calculate overlap region and active edge cut geometries on the top layer."""
+        """Calculate overlap region, active edge cut geometries, and underlying opacity."""
         self._slices = []
         self._lines = []
         self._overlap_slice = None
+        self._bottom_mask = None
 
         if not top.global_region.overlaps(bottom.global_region):
             return
 
-        axis_y, axis_x = top.global_region.overlap_with(
-            bottom.global_region
-        ).to_slice()
+        overlap_top = top.global_region.overlap_with(bottom.global_region)
+        overlap_bottom = bottom.global_region.overlap_with(top.global_region)
+
+        axis_y, axis_x = overlap_top.to_slice()
         self._overlap_slice = (axis_y, axis_x)
+
+        expected_shape = (axis_y.stop - axis_y.start, axis_x.stop - axis_x.start)
+        self._bottom_mask = self._extract_bottom_mask(
+            bottom, overlap_bottom, expected_shape
+        )
+
         sides = self._resolve_sides(top, bottom)
 
         if abs(motion.angle) > 1e-4 or abs(top.transform.matrix[0, 1]) > 1e-4:
@@ -95,6 +110,40 @@ class BorderCutEffect(AnifuseEffect):
             self._slices = self._build_axis_aligned_slices(
                 sides, axis_y, axis_x
             )
+
+    def _extract_bottom_mask(
+        self,
+        bottom: Layer,
+        overlap_bottom: Region,
+        expected_shape: tuple[int, int],
+    ) -> np.ndarray | None:
+        """Extract boolean opacity mask from bottom layer over the overlap region."""
+        has_rot = (
+            abs(bottom.transform.matrix[0, 1]) > 1e-4
+            or abs(bottom.transform.matrix[1, 0]) > 1e-4
+        )
+        if has_rot:
+            rendered = flatten([bottom])
+            b_img = rendered.edits[0].image
+            b_sy, b_sx = rendered.global_region.overlap_with(
+                bottom.global_region
+            ).to_slice()
+        else:
+            b_img = bottom.edits[0].image
+            b_sy, b_sx = overlap_bottom.to_slice()
+
+        b_arr = b_img[...]
+        if b_arr.ndim < 3 or b_arr.shape[2] != 4:
+            return np.ones(expected_shape, dtype=bool)
+
+        bh, bw = b_arr.shape[:2]
+        clamped_y = slice(max(0, b_sy.start), min(bh, b_sy.stop))
+        clamped_x = slice(max(0, b_sx.start), min(bw, b_sx.stop))
+        if clamped_y.start >= clamped_y.stop or clamped_x.start >= clamped_x.stop:
+            return None
+
+        sub_b_alpha = b_arr[clamped_y, clamped_x, 3]
+        return sub_b_alpha >= self.min_alpha
 
     def _resolve_sides(self, top: Layer, bottom: Layer) -> dict[str, int]:
         """Determine active cut sides and thicknesses via manual configuration or Canvas movement."""
@@ -204,19 +253,60 @@ class BorderCutEffect(AnifuseEffect):
         sx = slice(axis_x.start, min(axis_x.stop, w))
         if sy.start >= sy.stop or sx.start >= sx.stop:
             return
-        sub_alpha = np.ascontiguousarray(arr[sy, sx, 3])
+
+        overlap_h = sy.stop - sy.start
+        overlap_w = sx.stop - sx.start
+        line_mask = np.zeros((overlap_h, overlap_w), dtype=np.uint8)
         for pt1, pt2, size in self._lines:
-            cv2.line(sub_alpha, pt1, pt2, color=0, thickness=2 * size)
-        arr[sy, sx, 3] = sub_alpha
+            cv2.line(line_mask, pt1, pt2, color=255, thickness=2 * size)
+
+        cut_mask = line_mask > 0
+        if self._bottom_mask is not None:
+            bm = self._bottom_mask
+            mh, mw = min(overlap_h, bm.shape[0]), min(overlap_w, bm.shape[1])
+            cut_mask[:mh, :mw] = cut_mask[:mh, :mw] & bm[:mh, :mw]
+            if overlap_h > mh:
+                cut_mask[mh:, :] = False
+            if overlap_w > mw:
+                cut_mask[:, mw:] = False
+
+        sub_alpha = arr[sy, sx, 3]
+        sub_alpha[cut_mask] = 0
 
     def _apply_axis_aligned_slices(self, arr: np.ndarray) -> None:
         """Erase rectangular slices in-place along orthogonal layer edges."""
+        if self._overlap_slice is None:
+            return
+        axis_y, axis_x = self._overlap_slice
         h, w = arr.shape[:2]
-        for sy, sx in self._slices:
-            clamped_y = slice(sy.start, min(sy.stop, h))
-            clamped_x = slice(sx.start, min(sx.stop, w))
-            if clamped_y.start < clamped_y.stop and clamped_x.start < clamped_x.stop:
-                arr[clamped_y, clamped_x, 3] = 0
+        sy = slice(axis_y.start, min(axis_y.stop, h))
+        sx = slice(axis_x.start, min(axis_x.stop, w))
+        if sy.start >= sy.stop or sx.start >= sx.stop:
+            return
+
+        overlap_h = sy.stop - sy.start
+        overlap_w = sx.stop - sx.start
+        cut_mask = np.zeros((overlap_h, overlap_w), dtype=bool)
+
+        for s_box_y, s_box_x in self._slices:
+            rel_y_start = max(0, s_box_y.start - sy.start)
+            rel_y_stop = min(overlap_h, s_box_y.stop - sy.start)
+            rel_x_start = max(0, s_box_x.start - sx.start)
+            rel_x_stop = min(overlap_w, s_box_x.stop - sx.start)
+            if rel_y_start < rel_y_stop and rel_x_start < rel_x_stop:
+                cut_mask[rel_y_start:rel_y_stop, rel_x_start:rel_x_stop] = True
+
+        if self._bottom_mask is not None:
+            bm = self._bottom_mask
+            mh, mw = min(overlap_h, bm.shape[0]), min(overlap_w, bm.shape[1])
+            cut_mask[:mh, :mw] = cut_mask[:mh, :mw] & bm[:mh, :mw]
+            if overlap_h > mh:
+                cut_mask[mh:, :] = False
+            if overlap_w > mw:
+                cut_mask[:, mw:] = False
+
+        sub_alpha = arr[sy, sx, 3]
+        sub_alpha[cut_mask] = 0
 
     def apply(self, image: Image, matrix: np.ndarray) -> Image:
         """Erase alpha channel in-place along calculated border seam slices or lines."""

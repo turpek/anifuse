@@ -259,3 +259,21 @@ def test_border_cut_pure_scale_uses_axis_aligned_slices():
 
     assert len(effect._slices) > 0
     assert len(effect._lines) == 0
+
+
+def test_border_cut_preserves_alpha_over_transparent_bottom():
+    """Verify that top layer alpha is preserved where bottom layer is transparent to avoid holes."""
+    bottom_arr = np.full((100, 100, 4), [255, 0, 0, 255], dtype=np.uint8)
+    bottom_arr[:, :50, 3] = 0
+    bottom = Layer(Image(bottom_arr, ImageFormat.RGBA))
+    top = Layer(Image(np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
+    top.transform.translate(20, 0)
+    motion = MotionEstimate(dx=20.0, dy=0.0, confidence=1.0)
+
+    effect = BorderCutEffect(cut_size=10)
+    effect.update(top, bottom, motion)
+    top.add_effect(effect)
+    result = flatten([bottom, top])
+    arr = result.edits[0].image[...]
+
+    assert np.all(arr[:, 20:30, 3] == 255)
