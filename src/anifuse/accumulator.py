@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from anicrop.composition import clone_layer, flatten
+from anicrop.composition import flatten
 from anicrop.enums import InterpMode
 
 from anifuse.interfaces.effect import AnifuseEffect, LayerTarget
@@ -109,9 +109,9 @@ class DualAccumulator(FrameAccumulator):
         interp: InterpMode = InterpMode.LANCZOS,
         effects: Sequence[AnifuseEffect] = (),
     ) -> None:
-        """Initialize accumulator with two cloned copies of the base layer and effects."""
-        self._first_on_top = clone_layer(base_layer)
-        self._last_on_top = clone_layer(base_layer)
+        """Initialize accumulator with base layer and effects."""
+        self._first_on_top = base_layer
+        self._last_on_top = base_layer
         self._interp = interp
         self._effects = tuple(effects)
 
@@ -135,9 +135,8 @@ class DualAccumulator(FrameAccumulator):
 
     def push(self, incoming: Layer, motion: MotionEstimate) -> None:
         """Update both first-on-top and last-on-top composites with isolated effects."""
-        incoming_clone = clone_layer(incoming)
         self._flatten_first_on_top(incoming, motion)
-        self._flatten_last_on_top(incoming_clone, motion)
+        self._flatten_last_on_top(incoming, motion)
 
     @property
     def reference_layer(self) -> Layer:
