@@ -209,3 +209,22 @@ def test_orb_rotation_estimator_detects_rotation(
     assert isinstance(returned_frame, Image)
     assert abs(estimate.angle) == pytest.approx(5.0, abs=1.0)
     assert estimate.scale == pytest.approx(1.0, abs=0.05)
+
+
+def test_orb_extract_matches_reuses_cached_ref(synthetic_pattern_frame: Image):
+    """Verify that _extract_matches reuses cached reference keypoints and descriptors."""
+    estimator = OrbRotationEstimator(max_features=1000)
+    gray = estimator._to_gray(synthetic_pattern_frame)
+
+    kp1, desc1 = estimator._detect_and_compute(gray)
+    assert kp1 is not None and desc1 is not None
+
+    kp1_out, desc1_out, kp2, matches, valid = estimator._extract_matches(
+        np.zeros((10, 10), dtype=np.uint8),
+        gray,
+        cached_ref=(kp1, desc1),
+    )
+
+    assert kp1_out is kp1
+    assert desc1_out is desc1
+    assert len(valid) >= 4

@@ -118,29 +118,58 @@ class _BaseOrbEstimator(Estimator):
     def _to_gray(self, img: Image) -> np.ndarray:
         return img.to_uint8().to_format(ImageFormat.GRAY)[...].squeeze()
 
+    def _detect_and_compute(
+        self,
+        gray: np.ndarray,
+        mask: np.ndarray | None = None,
+    ) -> tuple[list[cv2.KeyPoint] | None, np.ndarray | None]:
+        """Detect keypoints and compute descriptors on a single grayscale image."""
+        kp, desc = self._orb.detectAndCompute(gray, mask)
+        if desc is None or len(kp) < 4:
+            return None, None
+        return kp, desc
+
+    def _match_descriptors(
+        self,
+        desc1: np.ndarray,
+        desc2: np.ndarray,
+    ) -> tuple[list[cv2.DMatch], list[cv2.DMatch]]:
+        """Match descriptors using BFMatcher with distance filtering."""
+        matches = sorted(self._matcher.match(desc1, desc2), key=lambda x: x.distance)
+        valid = [m for m in matches if m.distance < self.distance_threshold]
+        if len(valid) < 4:
+            valid = matches[: max(4, len(matches))]
+        return matches, valid
+
     def _extract_matches(
         self,
         gray1: np.ndarray,
         gray2: np.ndarray,
         mask: np.ndarray | None = None,
+        cached_ref: tuple[list[cv2.KeyPoint], np.ndarray] | None = None,
     ) -> tuple[
         list[cv2.KeyPoint] | None,
+        np.ndarray | None,
         list[cv2.KeyPoint] | None,
         list[cv2.DMatch],
         list[cv2.DMatch],
     ]:
-        kp1, desc1 = self._orb.detectAndCompute(gray1, None)
-        kp2, desc2 = self._orb.detectAndCompute(gray2, mask)
+        """Extract features and match descriptors between reference and incoming images.
 
-        if desc1 is None or desc2 is None or len(kp1) < 4 or len(kp2) < 4:
-            return None, None, [], []
+        If cached_ref is supplied, avoids recomputing keypoints and descriptors on gray1.
+        """
+        if cached_ref is not None:
+            kp1, desc1 = cached_ref
+        else:
+            kp1, desc1 = self._detect_and_compute(gray1, None)
 
-        matches = sorted(self._matcher.match(desc1, desc2), key=lambda x: x.distance)
-        valid = [m for m in matches if m.distance < self.distance_threshold]
-        if len(valid) < 4:
-            valid = matches[: max(4, len(matches))]
+        kp2, desc2 = self._detect_and_compute(gray2, mask)
 
-        return kp1, kp2, matches, valid
+        if kp1 is None or desc1 is None or kp2 is None or desc2 is None:
+            return None, None, None, [], []
+
+        matches, valid = self._match_descriptors(desc1, desc2)
+        return kp1, desc1, kp2, matches, valid
 
     def _calculate_confidence(
         self,
@@ -188,7 +217,7 @@ class OrbTranslationEstimator(_BaseOrbEstimator):
         gray1 = self._to_gray(ref)
         gray2 = self._to_gray(incoming)
 
-        kp1, kp2, matches, valid = self._extract_matches(gray1, gray2, mask=mask)
+        kp1, _, kp2, matches, valid = self._extract_matches(gray1, gray2, mask=mask)
         if kp1 is None or kp2 is None or len(valid) < 4:
             return MotionEstimate(confidence=0.0), incoming
 
@@ -245,8 +274,10 @@ class OrbTransformEstimator(_BaseOrbEstimator):
         gray1 = self._to_gray(ref)
         gray2 = self._to_gray(incoming)
 
-        kp1, kp2, matches, valid = self._extract_matches(gray1, gray2, mask=mask)
-        if kp1 is None or kp2 is None or len(valid) < 4:
+        kp1, desc1, kp2, matches, valid = self._extract_matches(
+            gray1, gray2, mask=mask
+        )
+        if kp1 is None or desc1 is None or kp2 is None or len(valid) < 4:
             return MotionEstimate(confidence=0.0), incoming
 
         pts1 = np.array([kp1[m.queryIdx].pt for m in valid], dtype=np.float32).reshape(
@@ -299,8 +330,11 @@ class OrbTransformEstimator(_BaseOrbEstimator):
             transformed_incoming = Image(transformed_arr, incoming.format)
             gray2_transformed = self._to_gray(transformed_incoming)
 
-            kp1_r, kp2_r, matches_r, valid_r = self._extract_matches(
-                gray1, gray2_transformed, mask=transformed_mask
+            kp1_r, _, kp2_r, matches_r, valid_r = self._extract_matches(
+                gray1,
+                gray2_transformed,
+                mask=transformed_mask,
+                cached_ref=(kp1, desc1),
             )
 
             if kp1_r is None or kp2_r is None or len(valid_r) < 4:
@@ -380,8 +414,10 @@ class OrbRotationEstimator(_BaseOrbEstimator):
         gray1 = self._to_gray(ref)
         gray2 = self._to_gray(incoming)
 
-        kp1, kp2, matches, valid = self._extract_matches(gray1, gray2, mask=mask)
-        if kp1 is None or kp2 is None or len(valid) < 4:
+        kp1, desc1, kp2, matches, valid = self._extract_matches(
+            gray1, gray2, mask=mask
+        )
+        if kp1 is None or desc1 is None or kp2 is None or len(valid) < 4:
             return MotionEstimate(confidence=0.0), incoming
 
         pts1 = np.array([kp1[m.queryIdx].pt for m in valid], dtype=np.float32).reshape(
@@ -422,8 +458,11 @@ class OrbRotationEstimator(_BaseOrbEstimator):
                 else None
             )
 
-            kp1_r, kp2_r, matches_r, valid_r = self._extract_matches(
-                gray1, gray2_rot, mask=transformed_mask
+            kp1_r, _, kp2_r, matches_r, valid_r = self._extract_matches(
+                gray1,
+                gray2_rot,
+                mask=transformed_mask,
+                cached_ref=(kp1, desc1),
             )
 
             if kp1_r is None or kp2_r is None or len(valid_r) < 4:
@@ -502,8 +541,10 @@ class OrbScaleEstimator(_BaseOrbEstimator):
         gray1 = self._to_gray(ref)
         gray2 = self._to_gray(incoming)
 
-        kp1, kp2, matches, valid = self._extract_matches(gray1, gray2, mask=mask)
-        if kp1 is None or kp2 is None or len(valid) < 4:
+        kp1, desc1, kp2, matches, valid = self._extract_matches(
+            gray1, gray2, mask=mask
+        )
+        if kp1 is None or desc1 is None or kp2 is None or len(valid) < 4:
             return MotionEstimate(confidence=0.0), incoming
 
         pts1 = np.array([kp1[m.queryIdx].pt for m in valid], dtype=np.float32).reshape(
@@ -535,8 +576,11 @@ class OrbScaleEstimator(_BaseOrbEstimator):
                 else None
             )
 
-            kp1_s, kp2_s, matches_s, valid_s = self._extract_matches(
-                gray1, gray2_scaled, mask=transformed_mask
+            kp1_s, _, kp2_s, matches_s, valid_s = self._extract_matches(
+                gray1,
+                gray2_scaled,
+                mask=transformed_mask,
+                cached_ref=(kp1, desc1),
             )
 
             if kp1_s is None or kp2_s is None or len(valid_s) < 4:
