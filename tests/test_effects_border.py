@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
+from anicrop.composition import flatten
 from anicrop.enums import ImageFormat
 from anicrop.image import Image
 from anicrop.layer import Layer
@@ -202,3 +203,59 @@ def test_scene_stitcher_executes_with_border_cut_effect():
 
     assert isinstance(result, Image)
     assert result.size == (120, 100)
+
+
+def test_border_cut_rotated_frame_cuts_tilted_seam():
+    """Verify that rotated frames generate tilted lines erasing alpha along the seam."""
+    bottom = Layer(Image(np.full((100, 100, 4), [255, 0, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
+    top = Layer(Image(np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
+    top.transform.rotate(5)
+    top.transform.translate(20, 0)
+    motion = MotionEstimate(dx=20.0, dy=0.0, angle=5.0, confidence=1.0)
+
+    effect = BorderCutEffect(cut_size=4)
+    effect.update(top, bottom, motion)
+    top.add_effect(effect)
+    result = flatten([bottom, top])
+    arr = result.edits[0].image[...]
+
+    revealed_bottom_pixels = np.count_nonzero((arr[:, :, 0] == 255) & (arr[:, :, 1] == 0))
+    assert len(effect._lines) > 0
+    assert len(effect._slices) == 0
+    assert revealed_bottom_pixels > 2000
+
+
+def test_border_cut_rotated_frame_with_scale():
+    """Verify that combined rotation and scale generate tilted seam cuts."""
+    bottom = Layer(Image(np.full((100, 100, 4), [255, 0, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
+    top = Layer(Image(np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
+    top.transform.scale(1.1, 1.1)
+    top.transform.rotate(5)
+    top.transform.translate(10, 0)
+    motion = MotionEstimate(dx=10.0, dy=0.0, angle=5.0, scale=1.1, confidence=1.0)
+
+    effect = BorderCutEffect(cut_size=5)
+    effect.update(top, bottom, motion)
+    top.add_effect(effect)
+    result = flatten([bottom, top])
+    arr = result.edits[0].image[...]
+
+    assert len(effect._lines) > 0
+    assert len(effect._slices) == 0
+    assert arr.shape[0] > 100
+    assert arr.shape[1] > 100
+
+
+def test_border_cut_pure_scale_uses_axis_aligned_slices():
+    """Verify that pure scale without rotation generates rectangular axis-aligned cut slices."""
+    bottom = Layer(Image(np.full((100, 100, 4), [255, 0, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
+    top = Layer(Image(np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
+    top.transform.scale(1.1, 1.1)
+    top.transform.translate(10, 0)
+    motion = MotionEstimate(dx=10.0, dy=0.0, angle=0.0, scale=1.1, confidence=1.0)
+
+    effect = BorderCutEffect(cut_size=5)
+    effect.update(top, bottom, motion)
+
+    assert len(effect._slices) > 0
+    assert len(effect._lines) == 0
