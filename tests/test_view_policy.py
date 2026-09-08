@@ -14,9 +14,14 @@ from anifuse.interfaces import (
     Estimator,
     MotionEstimate,
     Section,
+    SectionGenerator,
 )
 from anifuse.mask import StaticMaskView
-from anifuse.view_policy import AdaptiveViewPolicy, CrossSections
+from anifuse.view_policy import (
+    AdaptiveViewPolicy,
+    CrossSections,
+    GlobalSections,
+)
 
 
 class _MockEstimator(Estimator):
@@ -169,3 +174,28 @@ def test_adaptive_view_policy_passes_mask_to_estimator(
     policy.resolve(canvas_image, incoming_image, [sec])
 
     assert estimator.last_mask is mask_arr
+
+
+def test_cross_sections_inherits_section_generator():
+    """Verify that CrossSections is an instance of SectionGenerator."""
+    canvas_bounds = Region.from_rect(0, 0, 1000, 500)
+    cross = CrossSections(global_region=canvas_bounds)
+    assert isinstance(cross, SectionGenerator)
+
+
+def test_global_sections_inherits_section_generator():
+    """Verify that GlobalSections is an instance of SectionGenerator."""
+    canvas_bounds = Region.from_rect(0, 0, 1000, 500)
+    global_sec = GlobalSections(global_region=canvas_bounds)
+    assert isinstance(global_sec, SectionGenerator)
+
+
+def test_global_sections_yields_full_canvas_region():
+    """Verify that GlobalSections yields a single section covering the entire canvas."""
+    canvas_bounds = Region.from_rect(100, 200, 1920, 1080)
+    global_sec = GlobalSections(global_region=canvas_bounds)
+    sections = list(global_sec)
+
+    assert len(sections) == 1
+    assert sections[0].ref == canvas_bounds
+    assert sections[0].view == Region.from_size(1920, 1080)

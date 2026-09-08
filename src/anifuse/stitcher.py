@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from anifuse.interfaces.handler import TransformHandler
     from anifuse.interfaces.mask import MaskView
     from anifuse.interfaces.reader import FrameReader
-    from anifuse.interfaces.view_policy import ViewPolicy
+    from anifuse.interfaces.view_policy import SectionGenerator, ViewPolicy
 
 
 class SceneStitcher(Stitcher):
@@ -88,6 +88,7 @@ class SceneStitcher(Stitcher):
         effects: Sequence[AnifuseEffect] = (),
         blend_mode: BlendMode = BlendMode.SOLID_FILL,
         interp: InterpMode = InterpMode.LANCZOS,
+        sections_cls: type[SectionGenerator] = CrossSections,
     ) -> Image | tuple[Image, Image]:
         """Stitch frames supplied by reader into panoramic composite image(s)."""
         frame_iter = iter(reader)
@@ -108,7 +109,7 @@ class SceneStitcher(Stitcher):
         last_region: Region = initial_layer.global_region
 
         for frame in frame_iter:
-            sections = CrossSections(
+            sections = sections_cls(
                 accumulator.reference_layer.global_region, last_region
             )
             alignment, ready_image = self.view_policy.resolve(

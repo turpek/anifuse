@@ -25,6 +25,7 @@ from anifuse.interfaces import (
     ProgressCallback,
     ReadStrategy,
     Section,
+    SectionGenerator,
     StackOrder,
     Stitcher,
     TransformHandler,
@@ -45,7 +46,11 @@ from anifuse.reader import (
     StreamReadStrategy,
 )
 from anifuse.stitcher import SceneStitcher
-from anifuse.view_policy import AdaptiveViewPolicy, CrossSections
+from anifuse.view_policy import (
+    AdaptiveViewPolicy,
+    CrossSections,
+    GlobalSections,
+)
 
 __all__ = [
     "AdaptiveViewPolicy",
@@ -63,6 +68,7 @@ __all__ = [
     "Frame",
     "FrameAccumulator",
     "FrameReader",
+    "GlobalSections",
     "HorizontalTranslationHandler",
     "ImageSequenceReader",
     "LastOnTopAccumulator",
@@ -74,6 +80,7 @@ __all__ = [
     "ReadStrategy",
     "SceneStitcher",
     "Section",
+    "SectionGenerator",
     "SequenceMaskView",
     "StackOrder",
     "StaticMaskView",

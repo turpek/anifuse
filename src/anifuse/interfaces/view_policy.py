@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from types import EllipsisType
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -20,6 +21,24 @@ class Section:
 
     ref: Region
     view: Region
+
+
+class SectionGenerator(ABC):
+    """Abstract generator producing candidate search sections for frame alignment."""
+
+    @abstractmethod
+    def __init__(
+        self,
+        global_region: Region,
+        last_region: Region | EllipsisType = ...,
+    ) -> None:
+        """Initialize generator with canvas global bounds and reference last region."""
+        pass
+
+    @abstractmethod
+    def __iter__(self) -> Iterator[Section]:
+        """Yield candidate search sections."""
+        pass
 
 
 @dataclass(frozen=True)

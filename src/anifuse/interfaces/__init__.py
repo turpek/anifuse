@@ -24,6 +24,7 @@ from anifuse.interfaces.view_policy import (
     AlignmentError,
     AlignmentResult,
     Section,
+    SectionGenerator,
     ViewPolicy,
 )
 
@@ -43,6 +44,7 @@ __all__ = [
     "ProgressCallback",
     "ReadStrategy",
     "Section",
+    "SectionGenerator",
     "StackOrder",
     "Stitcher",
     "TransformHandler",
