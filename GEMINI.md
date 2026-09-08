@@ -198,6 +198,10 @@ O `anifuse` consome o motor gráfico `anicrop`. Sempre que precisar consultar m�
   - Extrai `axis_y, axis_x = overlap.to_slice()` e reaproveita o eixo intacto para fatiar in-place no canal alfa (`arr[sy, sx, 3] = 0`), com proteção `min` contra sobreposições finas.
   - Confinamento estrito à sobreposição: nunca abre furos em áreas de novo cenário.
   - Suporta detecção automática de direção via $\Delta X, \Delta Y = (\text{top} - \text{bottom}).\text{top\_left}$, corte em "L" para movimentos diagonais e espessuras manuais independentes por borda.
+  - **Suporte a Rotação e Escala:**
+    - **Translação Pura e Escala Ortogonal:** Utiliza fatiamento retangular direto (`_build_axis_aligned_slices`), preservando ortogonalidade e zero-copy.
+    - **Quadros Rotacionados:** Extrai os 4 cantos originais do frame via `top.region.size`, projeta para o referencial local do bounding box via `top.transform.matrix` e rasteriza as linhas de emenda inclinadas com `cv2.line` sobre `np.ascontiguousarray(arr[sy, sx, 3])`, confinado estritamente ao overlap.
+    - **Modularização Limpa:** A lógica interna é estruturada em métodos privados com `_` (`_resolve_sides`, `_build_axis_aligned_slices`, `_build_rotated_lines`, `_apply_rotated_lines`, `_apply_axis_aligned_slices`).
 
 ---
 
