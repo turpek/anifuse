@@ -14,6 +14,7 @@ class Config:
     translation_threshold: float = 0.0
     fast_threshold: int = 10
     batch_size: int = 15
+    border_cut_size: int = 5
     stack_order: StackOrder = StackOrder.BOTH
 
 

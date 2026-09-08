@@ -2,16 +2,38 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from anicrop.composition import clone_layer, flatten
 from anicrop.enums import InterpMode
 
+from anifuse.interfaces.effect import AnifuseEffect, LayerTarget
 from anifuse.interfaces.stitcher import FrameAccumulator, StackOrder
 
 if TYPE_CHECKING:
     from anicrop.image import Image
     from anicrop.layer import Layer
+
+    from anifuse.interfaces.estimator import MotionEstimate
+
+
+def apply_effects(
+    top: Layer,
+    bottom: Layer,
+    effects: Sequence[AnifuseEffect],
+    motion: MotionEstimate,
+) -> None:
+    """Update and bind post-processing effects to target layers before flattening."""
+    for effect in effects:
+        effect.update(top, bottom, motion)
+        if effect.target == LayerTarget.TOP:
+            top.add_effect(effect)
+        elif effect.target == LayerTarget.BOTTOM:
+            bottom.add_effect(effect)
+        elif effect.target == LayerTarget.BOTH:
+            top.add_effect(effect)
+            bottom.add_effect(effect)
 
 
 class FirstOnTopAccumulator(FrameAccumulator):
@@ -21,14 +43,20 @@ class FirstOnTopAccumulator(FrameAccumulator):
         self,
         base_layer: Layer,
         interp: InterpMode = InterpMode.LANCZOS,
+        effects: Sequence[AnifuseEffect] = (),
     ) -> None:
-        """Initialize accumulator with base layer and interpolation mode."""
+        """Initialize accumulator with base layer, interpolation mode, and effects."""
         self._base = base_layer
         self._interp = interp
+        self._effects = tuple(effects)
 
-    def push(self, incoming: Layer) -> None:
-        """Flatten incoming layer underneath the accumulated canvas."""
-        self._base = flatten([incoming, self._base], interp=self._interp)
+    def push(self, incoming: Layer, motion: MotionEstimate) -> None:
+        """Flatten incoming layer underneath the accumulated canvas with effects applied."""
+        top, bottom = self._base, incoming
+        apply_effects(top, bottom, self._effects, motion)
+        self._base = flatten([bottom, top], interp=self._interp)
+        top.clear_effects()
+        bottom.clear_effects()
 
     @property
     def reference_layer(self) -> Layer:
@@ -47,14 +75,20 @@ class LastOnTopAccumulator(FrameAccumulator):
         self,
         base_layer: Layer,
         interp: InterpMode = InterpMode.LANCZOS,
+        effects: Sequence[AnifuseEffect] = (),
     ) -> None:
-        """Initialize accumulator with base layer and interpolation mode."""
+        """Initialize accumulator with base layer, interpolation mode, and effects."""
         self._base = base_layer
         self._interp = interp
+        self._effects = tuple(effects)
 
-    def push(self, incoming: Layer) -> None:
-        """Flatten incoming layer on top of the accumulated canvas."""
-        self._base = flatten([self._base, incoming], interp=self._interp)
+    def push(self, incoming: Layer, motion: MotionEstimate) -> None:
+        """Flatten incoming layer on top of the accumulated canvas with effects applied."""
+        top, bottom = incoming, self._base
+        apply_effects(top, bottom, self._effects, motion)
+        self._base = flatten([bottom, top], interp=self._interp)
+        top.clear_effects()
+        bottom.clear_effects()
 
     @property
     def reference_layer(self) -> Layer:
@@ -73,21 +107,37 @@ class DualAccumulator(FrameAccumulator):
         self,
         base_layer: Layer,
         interp: InterpMode = InterpMode.LANCZOS,
+        effects: Sequence[AnifuseEffect] = (),
     ) -> None:
-        """Initialize accumulator with two cloned copies of the base layer."""
+        """Initialize accumulator with two cloned copies of the base layer and effects."""
         self._first_on_top = clone_layer(base_layer)
         self._last_on_top = clone_layer(base_layer)
         self._interp = interp
+        self._effects = tuple(effects)
 
-    def push(self, incoming: Layer) -> None:
-        """Update both first-on-top and last-on-top composites."""
+    def _flatten_first_on_top(
+        self, incoming: Layer, motion: MotionEstimate
+    ) -> None:
+        top, bottom = self._first_on_top, incoming
+        apply_effects(top, bottom, self._effects, motion)
+        self._first_on_top = flatten([bottom, top], interp=self._interp)
+        top.clear_effects()
+        bottom.clear_effects()
+
+    def _flatten_last_on_top(
+        self, incoming: Layer, motion: MotionEstimate
+    ) -> None:
+        top, bottom = incoming, self._last_on_top
+        apply_effects(top, bottom, self._effects, motion)
+        self._last_on_top = flatten([bottom, top], interp=self._interp)
+        top.clear_effects()
+        bottom.clear_effects()
+
+    def push(self, incoming: Layer, motion: MotionEstimate) -> None:
+        """Update both first-on-top and last-on-top composites with isolated effects."""
         incoming_clone = clone_layer(incoming)
-        self._first_on_top = flatten(
-            [incoming, self._first_on_top], interp=self._interp
-        )
-        self._last_on_top = flatten(
-            [self._last_on_top, incoming_clone], interp=self._interp
-        )
+        self._flatten_first_on_top(incoming, motion)
+        self._flatten_last_on_top(incoming_clone, motion)
 
     @property
     def reference_layer(self) -> Layer:
@@ -103,12 +153,13 @@ def create_accumulator(
     order: StackOrder,
     initial_layer: Layer,
     interp: InterpMode = InterpMode.LANCZOS,
+    effects: Sequence[AnifuseEffect] = (),
 ) -> FrameAccumulator:
     """Factory creating the appropriate FrameAccumulator for the given StackOrder."""
     if order == StackOrder.FIRST_ON_TOP:
-        return FirstOnTopAccumulator(initial_layer, interp=interp)
+        return FirstOnTopAccumulator(initial_layer, interp=interp, effects=effects)
     if order == StackOrder.LAST_ON_TOP:
-        return LastOnTopAccumulator(initial_layer, interp=interp)
+        return LastOnTopAccumulator(initial_layer, interp=interp, effects=effects)
     if order == StackOrder.BOTH:
-        return DualAccumulator(initial_layer, interp=interp)
+        return DualAccumulator(initial_layer, interp=interp, effects=effects)
     raise ValueError(f"Unknown StackOrder: {order}")

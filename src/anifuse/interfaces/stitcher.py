@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from enum import StrEnum
 from typing import TYPE_CHECKING
+
+from anicrop.enums import BlendMode, InterpMode
 
 if TYPE_CHECKING:
     from anicrop.image import Image
     from anicrop.layer import Layer
 
+    from anifuse.interfaces.effect import AnifuseEffect
+    from anifuse.interfaces.estimator import MotionEstimate
     from anifuse.interfaces.reader import FrameReader
     from anifuse.interfaces.view_policy import AlignmentResult
 
@@ -30,8 +34,8 @@ class FrameAccumulator(ABC):
     """Abstract strategy for accumulating aligned incoming frames into a canvas composite."""
 
     @abstractmethod
-    def push(self, incoming: Layer) -> None:
-        """Push an aligned incoming layer into the canvas composite."""
+    def push(self, incoming: Layer, motion: MotionEstimate) -> None:
+        """Push an aligned incoming layer into the canvas composite with its motion."""
         pass
 
     @property
@@ -50,6 +54,13 @@ class Stitcher(ABC):
     """Abstract orchestrator for stitching sequential frames into panoramic composite image(s)."""
 
     @abstractmethod
-    def stitch(self, reader: FrameReader) -> Image | tuple[Image, Image]:
+    def stitch(
+        self,
+        reader: FrameReader,
+        stack_order: StackOrder = StackOrder.BOTH,
+        effects: Sequence[AnifuseEffect] = (),
+        blend_mode: BlendMode = BlendMode.SOLID_FILL,
+        interp: InterpMode = InterpMode.LANCZOS,
+    ) -> Image | tuple[Image, Image]:
         """Stitch frames supplied by reader into panoramic composite image(s)."""
         pass
