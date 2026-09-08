@@ -12,6 +12,7 @@ from anifuse.interfaces import (
     AlignmentError,
     AlignmentResult,
     Section,
+    SectionGenerator,
     ViewPolicy,
 )
 from anifuse.mask import DefaultMaskView
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
     from anifuse.interfaces import Estimator, MaskView
 
 
-class CrossSections:
+class CrossSections(SectionGenerator):
     """Generator yielding candidate search sections: first local cross neighborhood, then global canvas grid."""
 
     def __init__(
@@ -41,9 +42,7 @@ class CrossSections:
     def __iter__(self) -> Iterator[Section]:
         """Yield candidate sections lazily: Center -> Cross Neighbors -> Full Canvas Grid."""
         if isinstance(self.last_region, EllipsisType):
-            local_view = Region.from_rect(
-                0, 0, self.global_region.width, self.global_region.height
-            )
+            local_view = Region.from_size(*self.global_region.size)
             yield Section(ref=self.global_region, view=local_view)
             return
 
@@ -107,6 +106,26 @@ class CrossSections:
                             yield Section(ref=tile_ref, view=local_view)
                 curr_y += step_val
             curr_x += step_val
+
+
+class GlobalSections(SectionGenerator):
+    """Generator yielding a single section covering the entire canvas global bounds."""
+
+    def __init__(
+        self,
+        global_region: Region,
+        last_region: Region | EllipsisType = ...,
+    ) -> None:
+        """Initialize generator with canvas global bounds and reference last region."""
+        self.global_region = global_region
+        self.last_region = last_region
+
+    def __iter__(self) -> Iterator[Section]:
+        """Yield candidate section spanning the full global canvas."""
+        yield Section(
+            ref=self.global_region,
+            view=Region.from_size(*self.global_region.size),
+        )
 
 
 class AdaptiveViewPolicy(ViewPolicy):
