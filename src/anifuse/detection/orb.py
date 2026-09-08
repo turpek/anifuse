@@ -265,14 +265,17 @@ class OrbTransformEstimator(_BaseOrbEstimator):
         else:
             raw_scale, raw_angle = 1.0, 0.0
 
-        angle = raw_angle if abs(raw_angle) > self.rotate_threshold else 0.0
-        scale = raw_scale if abs(1.0 - raw_scale) > self.scale_threshold else 0.0
+        has_rotation = abs(raw_angle) > self.rotate_threshold
+        has_scale = abs(1.0 - raw_scale) > self.scale_threshold
 
-        if angle or scale:
+        angle = raw_angle if has_rotation else 0.0
+        scale = raw_scale if has_scale else 1.0
+
+        if has_rotation or has_scale:
             apply_angle = angle
-            apply_scale = (1.0 / scale) if scale else 1.0
+            apply_scale = (1.0 / scale) if has_scale else 1.0
 
-            if not angle:
+            if not has_rotation:
                 transformed_arr = resize_image(
                     incoming[...], apply_scale, interp=self.interp
                 )
@@ -314,8 +317,8 @@ class OrbTransformEstimator(_BaseOrbEstimator):
             estimate = MotionEstimate(
                 dx=delx,
                 dy=dely,
-                angle=0.0,
-                scale=1.0,
+                angle=angle,
+                scale=scale,
                 confidence=confidence,
             )
             return estimate, transformed_incoming
@@ -397,12 +400,15 @@ class OrbRotationEstimator(_BaseOrbEstimator):
         else:
             raw_scale, raw_angle = 1.0, 0.0
 
-        angle = raw_angle if abs(raw_angle) > self.rotate_threshold else 0.0
-        scale = raw_scale if abs(1.0 - raw_scale) > self.scale_threshold else 0.0
+        has_rotation = abs(raw_angle) > self.rotate_threshold
+        has_scale = abs(1.0 - raw_scale) > self.scale_threshold
 
-        if angle:
+        angle = raw_angle if has_rotation else 0.0
+        scale = raw_scale if has_scale else 1.0
+
+        if has_rotation:
             apply_angle = angle
-            apply_scale = (1.0 / scale) if scale else 1.0
+            apply_scale = (1.0 / scale) if has_scale else 1.0
             transformed_arr = rotate_image(
                 incoming[...], apply_angle, apply_scale, interp=self.interp
             )
@@ -434,8 +440,8 @@ class OrbRotationEstimator(_BaseOrbEstimator):
             estimate = MotionEstimate(
                 dx=delx,
                 dy=dely,
-                angle=0.0,
-                scale=1.0,
+                angle=angle,
+                scale=scale,
                 confidence=confidence,
             )
             return estimate, transformed_incoming
@@ -513,10 +519,10 @@ class OrbScaleEstimator(_BaseOrbEstimator):
         else:
             raw_scale = 1.0
 
-        angle = 0.0
-        scale = raw_scale if abs(1.0 - raw_scale) > self.scale_threshold else 0.0
+        has_scale = abs(1.0 - raw_scale) > self.scale_threshold
+        scale = raw_scale if has_scale else 1.0
 
-        if scale:
+        if has_scale:
             apply_scale = 1.0 / scale
             transformed_arr = resize_image(
                 incoming[...], apply_scale, interp=self.interp
@@ -547,8 +553,8 @@ class OrbScaleEstimator(_BaseOrbEstimator):
             estimate = MotionEstimate(
                 dx=delx,
                 dy=dely,
-                angle=angle,
-                scale=1.0,
+                angle=0.0,
+                scale=scale,
                 confidence=confidence,
             )
             return estimate, transformed_incoming

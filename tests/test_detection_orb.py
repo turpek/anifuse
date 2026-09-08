@@ -122,8 +122,8 @@ def test_orb_transform_estimator_detects_rotation_and_prealigns_frame(
     assert isinstance(estimate, MotionEstimate)
     assert isinstance(returned_frame, Image)
     assert estimate.confidence > 0.0
-    assert estimate.angle == 0.0
-    assert estimate.scale == 1.0
+    assert abs(estimate.angle) == pytest.approx(5.0, abs=1.0)
+    assert estimate.scale == pytest.approx(1.0, abs=0.05)
 
 
 def test_orb_translation_estimator_respects_mask(
@@ -182,7 +182,7 @@ def test_orb_estimators_custom_parameters():
 def test_orb_scale_estimator_detects_scale_with_zero_angle(
     synthetic_pattern_frame: Image,
 ):
-    """Verify that OrbScaleEstimator resizes the incoming frame and always returns zero angle."""
+    """Verify that OrbScaleEstimator resizes the incoming frame and preserves estimated scale."""
     scaled_arr = resize_image(synthetic_pattern_frame[...], scale=1.1)
     scaled_frame = Image(scaled_arr, synthetic_pattern_frame.format)
 
@@ -192,13 +192,13 @@ def test_orb_scale_estimator_detects_scale_with_zero_angle(
     assert isinstance(estimate, MotionEstimate)
     assert isinstance(returned_frame, Image)
     assert estimate.angle == 0.0
-    assert estimate.scale == 1.0
+    assert estimate.scale == pytest.approx(1.1, rel=0.05)
 
 
 def test_orb_rotation_estimator_detects_rotation(
     synthetic_pattern_frame: Image,
 ):
-    """Verify that OrbRotationEstimator triggers rotation alignment when angle exceeds threshold."""
+    """Verify that OrbRotationEstimator triggers rotation alignment and preserves estimated angle."""
     rotated_arr = rotate_image(synthetic_pattern_frame[...], angle=5.0, scale=1.0)
     rotated_frame = Image(rotated_arr, synthetic_pattern_frame.format)
 
@@ -207,5 +207,5 @@ def test_orb_rotation_estimator_detects_rotation(
 
     assert isinstance(estimate, MotionEstimate)
     assert isinstance(returned_frame, Image)
-    assert estimate.angle == 0.0
-    assert estimate.scale == 1.0
+    assert abs(estimate.angle) == pytest.approx(5.0, abs=1.0)
+    assert estimate.scale == pytest.approx(1.0, abs=0.05)
