@@ -1,5 +1,14 @@
 """anifuse — Motor inteligente para fusão de cenas panorâmicas de animes."""
 
+from __future__ import annotations
+
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("anifuse")
+except PackageNotFoundError:
+    __version__ = "0.1.0"
+
 from anifuse.accumulator import (
     DualAccumulator,
     FirstOnTopAccumulator,
@@ -53,6 +62,7 @@ from anifuse.view_policy import (
 )
 
 __all__ = [
+    "__version__",
     "AdaptiveViewPolicy",
     "AlignmentError",
     "AlignmentResult",
