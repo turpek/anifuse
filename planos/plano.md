@@ -15,6 +15,7 @@ Este documento centraliza todos os objetivos arquiteturais, otimizações e o pr
 - [x] 7. Orquestrador de costura e composição de cena (`SceneStitcher`, `FrameAccumulator`, `StackOrder`).
 - [ ] 8. Subsistema de leitura de vídeo (integração com primitivas do `GPlayer`).
 - [ ] 9. Benchmarks de estresse, testes de ponta a ponta e documentação técnica.
+- [ ] 10. **Bugfix no `BorderCutEffect`:** Investigar e corrigir corte indevido da camada de baixo na versão `top1` (`StackOrder.FIRST_ON_TOP`).
 
 
 ---
@@ -124,4 +125,19 @@ class FrameReader(ABC):
   - `DualAccumulator`: Gera ambas as composições concorrentemente com custo computacional extra mínimo (apenas um segundo `flatten`).
 - **Aproveitamento Direto de `ready_frame`:** O buffer já transformado/rotacionado pelo estimador é encapsulado em `anicrop.image.Image(ready_frame, frame.image.format)` e injetado na camada sem interpolações redundantes.
 - **Caso de 1 Frame Delegado:** Zero condicionais no fluxo de `stitch()`; se a sequência contém apenas 1 frame, o laço de alinhamento não roda e o acumulador retorna a imagem diretamente.
+
+---
+
+### Task 10: Bugfix no `BorderCutEffect` (Camada de Baixo Apagada na Versão `top1`)
+
+#### 1. Relato do Problema
+* Ao processar composições com `StackOrder.FIRST_ON_TOP` (ou na saída `top1` do `DualAccumulator`), o `BorderCutEffect` está cortando indevidamente a camada de baixo.
+* O efeito foi projetado para atuar estritamente na borda da sobreposição da camada do topo a fim de revelar a base intacta, mas na inversão hierárquica do `first-on-top`, o corte está afetando a visibilidade da camada inferior.
+
+#### 2. Escopo da Investigação Futura
+- [ ] Reproduzir o bug em teste unitário dedicado com `StackOrder.FIRST_ON_TOP`.
+- [ ] Analisar o ciclo de vida dos efeitos no `FirstOnTopAccumulator` e no `DualAccumulator` (`top` vs `bottom` referencial).
+- [ ] Verificar a interação entre `LayerTarget.TOP` e a ordem das camadas no `apply_effects` e no `flatten`.
+- [ ] Garantir que a camada inferior permaneça 100% preservada em qualquer direção de empilhamento.
+
 
