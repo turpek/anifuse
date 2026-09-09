@@ -13,7 +13,11 @@ dependencies = [
     "numpy>=2.0.0",
     "opencv-python>=4.10.0",
     "pillow>=12.3.0",
+    "typer>=0.27.2",
 ]
+
+[project.scripts]
+anifuse = "anifuse.cli:app"
 
 [tool.uv.sources]
 anicrop = { git = "https://github.com/turpek/anicrop.git", branch = "main" }
