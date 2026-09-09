@@ -7,6 +7,7 @@ from statistics import StatisticsError, mode
 
 import cv2
 import numpy as np
+from anicrop import ScratchBuffer, transform_image
 from anicrop.enums import ImageFormat, InterpMode
 from anicrop.image import Image
 
@@ -56,41 +57,6 @@ def resize_image(
     return cv2.resize(mat, (new_w, new_h), interpolation=interp.value)
 
 
-def rotate_image(
-    mat: np.ndarray,
-    angle: float,
-    scale: float = 1.0,
-    interp: InterpMode = InterpMode.LANCZOS,
-) -> np.ndarray:
-    """Rotate and scale an image array, expanding bounding box to avoid clipping.
-
-    Args:
-        mat: Input image NumPy array (H, W) or (H, W, C).
-        angle: Rotation angle in degrees (counter-clockwise).
-        scale: Scale multiplier.
-        interp: Interpolation mode from anicrop.enums (defaults to InterpMode.LANCZOS).
-
-    Returns:
-        Warped image array with expanded dimensions.
-    """
-    if abs(angle) < 1e-5:
-        return resize_image(mat, scale, interp=interp)
-
-    height, width = mat.shape[:2]
-    center = (width / 2.0, height / 2.0)
-    rot_mat = cv2.getRotationMatrix2D(center, angle, scale)
-
-    abs_cos = abs(rot_mat[0, 0])
-    abs_sin = abs(rot_mat[0, 1])
-    bound_w = int(height * abs_sin + width * abs_cos)
-    bound_h = int(height * abs_cos + width * abs_sin)
-
-    rot_mat[0, 2] += bound_w / 2.0 - center[0]
-    rot_mat[1, 2] += bound_h / 2.0 - center[1]
-
-    return cv2.warpAffine(mat, rot_mat, (bound_w, bound_h), flags=interp.value)
-
-
 class _BaseOrbEstimator(Estimator):
     """Internal base helper managing shared ORB detector and matcher instances."""
 
@@ -114,6 +80,8 @@ class _BaseOrbEstimator(Estimator):
             fastThreshold=self.fast_threshold,
         )
         self._matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+        self._scratch = ScratchBuffer()
+        self._mask_scratch = ScratchBuffer()
 
     def _to_gray(self, img: Image) -> np.ndarray:
         return img.to_uint8().to_format(ImageFormat.GRAY)[...].squeeze()
@@ -310,24 +278,32 @@ class OrbTransformEstimator(_BaseOrbEstimator):
                 transformed_arr = resize_image(
                     incoming[...], apply_scale, interp=self.interp
                 )
+                transformed_incoming = Image(transformed_arr, incoming.format)
                 transformed_mask = (
                     resize_image(mask, apply_scale, interp=InterpMode.NEAREST)
                     if mask is not None
                     else None
                 )
             else:
-                transformed_arr = rotate_image(
-                    incoming[...], apply_angle, apply_scale, interp=self.interp
+                transformed_incoming = transform_image(
+                    incoming,
+                    angle=-apply_angle,
+                    scale=apply_scale,
+                    interp=self.interp,
+                    dst=self._scratch,
                 )
                 transformed_mask = (
-                    rotate_image(
-                        mask, apply_angle, apply_scale, interp=InterpMode.NEAREST
-                    )
+                    transform_image(
+                        Image(mask, ImageFormat.GRAY),
+                        angle=-apply_angle,
+                        scale=apply_scale,
+                        interp=InterpMode.NEAREST,
+                        dst=self._mask_scratch,
+                    )[...]
                     if mask is not None
                     else None
                 )
 
-            transformed_incoming = Image(transformed_arr, incoming.format)
             gray2_transformed = self._to_gray(transformed_incoming)
 
             kp1_r, _, kp2_r, matches_r, valid_r = self._extract_matches(
@@ -445,15 +421,22 @@ class OrbRotationEstimator(_BaseOrbEstimator):
         if has_rotation:
             apply_angle = angle
             apply_scale = (1.0 / scale) if has_scale else 1.0
-            transformed_arr = rotate_image(
-                incoming[...], apply_angle, apply_scale, interp=self.interp
+            transformed_incoming = transform_image(
+                incoming,
+                angle=-apply_angle,
+                scale=apply_scale,
+                interp=self.interp,
+                dst=self._scratch,
             )
-            transformed_incoming = Image(transformed_arr, incoming.format)
             gray2_rot = self._to_gray(transformed_incoming)
             transformed_mask = (
-                rotate_image(
-                    mask, apply_angle, apply_scale, interp=InterpMode.NEAREST
-                )
+                transform_image(
+                    Image(mask, ImageFormat.GRAY),
+                    angle=-apply_angle,
+                    scale=apply_scale,
+                    interp=InterpMode.NEAREST,
+                    dst=self._mask_scratch,
+                )[...]
                 if mask is not None
                 else None
             )

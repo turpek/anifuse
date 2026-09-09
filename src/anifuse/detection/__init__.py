@@ -7,7 +7,6 @@ from anifuse.detection.orb import (
     OrbTranslationEstimator,
     discrete_mode,
     resize_image,
-    rotate_image,
 )
 
 __all__ = [
@@ -17,5 +16,4 @@ __all__ = [
     "OrbTranslationEstimator",
     "discrete_mode",
     "resize_image",
-    "rotate_image",
 ]
