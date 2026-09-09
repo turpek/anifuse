@@ -103,8 +103,8 @@ sync-main:
 		echo "Nenhuma alteração de produção para sincronizar."; \
 	else \
 		git checkout main && \
-		git rm -rf --ignore-unmatch src/ tests/ assets/ >/dev/null 2>&1 || true; \
-		git checkout dev -- src/ tests/ README.md assets/ pyproject.toml Makefile .gitignore .python-version uv.lock && \
+		git rm -rf --ignore-unmatch src/ tests/ >/dev/null 2>&1 || true; \
+		git checkout dev -- src/ tests/ README.md pyproject.toml Makefile .gitignore uv.lock && \
 		git commit -m "release: sincroniza código de produção da dev" -m "$$CHANGES" -m "sync-point: $$CURRENT_DEV" && \
 		git checkout dev && \
 		echo "==> Sincronização concluída! Retornado para a branch dev."; \
