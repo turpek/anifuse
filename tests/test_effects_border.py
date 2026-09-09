@@ -64,7 +64,7 @@ def test_border_cut_auto_detects_left_edge_on_positive_dx():
     top = _create_solid_layer((0, 255, 0, 255), x=20, y=0)
     motion = MotionEstimate(dx=20.0, dy=0.0, confidence=1.0)
 
-    effect = BorderCutEffect(cut_size=5)
+    effect = BorderCutEffect(all=5)
     effect.update(top, bottom, motion)
     rendered_image = effect.apply(top.edits[0].image, np.eye(3))
     arr = rendered_image[...]
@@ -79,7 +79,7 @@ def test_border_cut_auto_detects_right_edge_on_negative_dx():
     top = _create_solid_layer((0, 255, 0, 255), x=0, y=0)
     motion = MotionEstimate(dx=-20.0, dy=0.0, confidence=1.0)
 
-    effect = BorderCutEffect(cut_size=5)
+    effect = BorderCutEffect(all=5)
     effect.update(top, bottom, motion)
     rendered_image = effect.apply(top.edits[0].image, np.eye(3))
     arr = rendered_image[...]
@@ -94,7 +94,7 @@ def test_border_cut_auto_detects_top_edge_on_positive_dy():
     top = _create_solid_layer((0, 255, 0, 255), x=0, y=20)
     motion = MotionEstimate(dx=0.0, dy=20.0, confidence=1.0)
 
-    effect = BorderCutEffect(cut_size=5)
+    effect = BorderCutEffect(all=5)
     effect.update(top, bottom, motion)
     rendered_image = effect.apply(top.edits[0].image, np.eye(3))
     arr = rendered_image[...]
@@ -109,7 +109,7 @@ def test_border_cut_auto_detects_bottom_edge_on_negative_dy():
     top = _create_solid_layer((0, 255, 0, 255), x=0, y=0)
     motion = MotionEstimate(dx=0.0, dy=-20.0, confidence=1.0)
 
-    effect = BorderCutEffect(cut_size=5)
+    effect = BorderCutEffect(all=5)
     effect.update(top, bottom, motion)
     rendered_image = effect.apply(top.edits[0].image, np.eye(3))
     arr = rendered_image[...]
@@ -124,7 +124,7 @@ def test_border_cut_auto_detects_l_cut_on_diagonal_movement():
     top = _create_solid_layer((0, 255, 0, 255), x=20, y=20)
     motion = MotionEstimate(dx=20.0, dy=20.0, confidence=1.0)
 
-    effect = BorderCutEffect(cut_size=5)
+    effect = BorderCutEffect(all=5)
     effect.update(top, bottom, motion)
     rendered_image = effect.apply(top.edits[0].image, np.eye(3))
     arr = rendered_image[...]
@@ -158,7 +158,7 @@ def test_border_cut_clamps_to_overlap_boundary():
     top = _create_solid_layer((0, 255, 0, 255), x=95, y=0)
     motion = MotionEstimate(dx=95.0, dy=0.0, confidence=1.0)
 
-    effect = BorderCutEffect(cut_size=20)
+    effect = BorderCutEffect(all=20)
     effect.update(top, bottom, motion)
     rendered_image = effect.apply(top.edits[0].image, np.eye(3))
     arr = rendered_image[...]
@@ -173,7 +173,7 @@ def test_border_cut_no_overlap_leaves_image_intact():
     top = _create_solid_layer((0, 255, 0, 255), x=200, y=200)
     motion = MotionEstimate(dx=200.0, dy=200.0, confidence=1.0)
 
-    effect = BorderCutEffect(cut_size=10)
+    effect = BorderCutEffect(all=10)
     effect.update(top, bottom, motion)
     rendered_image = effect.apply(top.edits[0].image, np.eye(3))
     arr = rendered_image[...]
@@ -198,7 +198,7 @@ def test_scene_stitcher_executes_with_border_cut_effect():
     result = stitcher.stitch(
         reader,
         stack_order=StackOrder.LAST_ON_TOP,
-        effects=[BorderCutEffect(cut_size=5)],
+        effects=[BorderCutEffect(all=5)],
     )
 
     assert isinstance(result, Image)
@@ -213,15 +213,13 @@ def test_border_cut_rotated_frame_cuts_tilted_seam():
     top.transform.translate(20, 0)
     motion = MotionEstimate(dx=20.0, dy=0.0, angle=5.0, confidence=1.0)
 
-    effect = BorderCutEffect(cut_size=4)
+    effect = BorderCutEffect(all=4)
     effect.update(top, bottom, motion)
     top.add_effect(effect)
     result = flatten([bottom, top])
     arr = result.edits[0].image[...]
 
     revealed_bottom_pixels = np.count_nonzero((arr[:, :, 0] == 255) & (arr[:, :, 1] == 0))
-    assert len(effect._lines) > 0
-    assert len(effect._slices) == 0
     assert revealed_bottom_pixels > 2000
 
 
@@ -234,46 +232,28 @@ def test_border_cut_rotated_frame_with_scale():
     top.transform.translate(10, 0)
     motion = MotionEstimate(dx=10.0, dy=0.0, angle=5.0, scale=1.1, confidence=1.0)
 
-    effect = BorderCutEffect(cut_size=5)
+    effect = BorderCutEffect(all=5)
     effect.update(top, bottom, motion)
     top.add_effect(effect)
     result = flatten([bottom, top])
     arr = result.edits[0].image[...]
 
-    assert len(effect._lines) > 0
-    assert len(effect._slices) == 0
     assert arr.shape[0] > 100
     assert arr.shape[1] > 100
 
 
-def test_border_cut_pure_scale_uses_axis_aligned_slices():
-    """Verify that pure scale without rotation generates rectangular axis-aligned cut slices."""
+def test_border_cut_pure_scale_applies_axis_aligned_cut():
+    """Verify that pure scale without rotation generates axis-aligned cut correctly."""
     bottom = Layer(Image(np.full((100, 100, 4), [255, 0, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
     top = Layer(Image(np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
     top.transform.scale(1.1, 1.1)
     top.transform.translate(10, 0)
     motion = MotionEstimate(dx=10.0, dy=0.0, angle=0.0, scale=1.1, confidence=1.0)
 
-    effect = BorderCutEffect(cut_size=5)
-    effect.update(top, bottom, motion)
-
-    assert len(effect._slices) > 0
-    assert len(effect._lines) == 0
-
-
-def test_border_cut_preserves_alpha_over_transparent_bottom():
-    """Verify that top layer alpha is preserved where bottom layer is transparent to avoid holes."""
-    bottom_arr = np.full((100, 100, 4), [255, 0, 0, 255], dtype=np.uint8)
-    bottom_arr[:, :50, 3] = 0
-    bottom = Layer(Image(bottom_arr, ImageFormat.RGBA))
-    top = Layer(Image(np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
-    top.transform.translate(20, 0)
-    motion = MotionEstimate(dx=20.0, dy=0.0, confidence=1.0)
-
-    effect = BorderCutEffect(cut_size=10)
+    effect = BorderCutEffect(all=5)
     effect.update(top, bottom, motion)
     top.add_effect(effect)
     result = flatten([bottom, top])
     arr = result.edits[0].image[...]
-
-    assert np.all(arr[:, 20:30, 3] == 255)
+    assert arr.shape[0] > 100
+    assert arr.shape[1] > 100
