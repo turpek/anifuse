@@ -3,6 +3,7 @@
 import cv2
 import numpy as np
 import pytest
+from anicrop import transform_image
 from anicrop.enums import ImageFormat
 from anicrop.image import Image
 
@@ -13,19 +14,21 @@ from anifuse.detection import (
     OrbTranslationEstimator,
     discrete_mode,
     resize_image,
-    rotate_image,
 )
 from anifuse.interfaces import MotionEstimate
 
 
 @pytest.fixture
 def synthetic_pattern_frame() -> Image:
-    """Generate a synthetic 200x200 frame with high-contrast distinct geometric features."""
-    img = np.zeros((200, 200, 3), dtype=np.uint8)
-    cv2.rectangle(img, (20, 20), (60, 60), (255, 255, 255), -1)
-    cv2.circle(img, (150, 50), 25, (200, 200, 200), -1)
-    cv2.circle(img, (80, 140), 30, (180, 180, 180), -1)
-    cv2.rectangle(img, (130, 130), (180, 180), (220, 220, 220), -1)
+    """Generate a synthetic 300x300 frame with high-contrast distinct textured features."""
+    img = np.zeros((300, 300, 3), dtype=np.uint8)
+    for i in range(12):
+        x = 30 + (i % 4) * 60
+        y = 30 + (i // 4) * 80
+        cv2.rectangle(img, (x, y), (x + 40, y + 40), (200, 200, 200), -1)
+        cv2.putText(
+            img, f"K{i}", (x + 5, y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2
+        )
     return Image(img, ImageFormat.RGB)
 
 
@@ -47,16 +50,6 @@ def test_discrete_mode_returns_zeros_on_empty_input():
 
     assert delx == 0.0
     assert dely == 0.0
-
-
-def test_rotate_image_expands_dimensions():
-    """Verify that rotate_image expands the bounding box when rotating non-zero angles."""
-    mat = np.zeros((100, 100, 3), dtype=np.uint8)
-
-    rotated = rotate_image(mat, angle=45.0, scale=1.0)
-
-    assert rotated.shape[0] > 100
-    assert rotated.shape[1] > 100
 
 
 def test_orb_translation_estimator_detects_shift(synthetic_pattern_frame: Image):
@@ -113,8 +106,7 @@ def test_orb_transform_estimator_detects_rotation_and_prealigns_frame(
     synthetic_pattern_frame: Image,
 ):
     """Verify that OrbTransformEstimator triggers 2-stage alignment when rotation is present."""
-    rotated_arr = rotate_image(synthetic_pattern_frame[...], angle=5.0, scale=1.0)
-    rotated_frame = Image(rotated_arr, synthetic_pattern_frame.format)
+    rotated_frame = transform_image(synthetic_pattern_frame, angle=5.0)
 
     estimator = OrbTransformEstimator(max_features=2000)
     estimate, returned_frame = estimator.estimate(synthetic_pattern_frame, rotated_frame)
@@ -199,8 +191,7 @@ def test_orb_rotation_estimator_detects_rotation(
     synthetic_pattern_frame: Image,
 ):
     """Verify that OrbRotationEstimator triggers rotation alignment and preserves estimated angle."""
-    rotated_arr = rotate_image(synthetic_pattern_frame[...], angle=5.0, scale=1.0)
-    rotated_frame = Image(rotated_arr, synthetic_pattern_frame.format)
+    rotated_frame = transform_image(synthetic_pattern_frame, angle=5.0)
 
     estimator = OrbRotationEstimator(max_features=2000, rotate_threshold=0.10)
     estimate, returned_frame = estimator.estimate(synthetic_pattern_frame, rotated_frame)
