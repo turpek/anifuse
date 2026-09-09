@@ -20,3 +20,5 @@ htmlcov/
 *.log
 scratch/
 scripts/temp_*
+*.zip
+scripts/
