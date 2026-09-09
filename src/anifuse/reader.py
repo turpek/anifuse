@@ -129,26 +129,56 @@ class ImageSequenceReader(FrameReader):
     def from_dir(
         cls,
         dir_path: Path | str,
+        start: int = 0,
+        frames: int | None = None,
+        step: int = 1,
         reverse: bool = False,
         strategy: ReadStrategy | None = None,
         image_format: ImageFormat = ImageFormat.RGBA,
     ) -> Self:
-        """Construct reader by resolving image files discovered in a directory."""
+        """Construct reader by resolving image files discovered in a directory with frame sampling.
+
+        Args:
+            dir_path: Directory path containing image sequence.
+            start: 0-indexed starting frame index (defaults to 0).
+            frames: Optional maximum count of frames to read.
+            step: Sampling step interval (defaults to 1).
+            reverse: Whether to reverse the final selected sequence.
+            strategy: Optional custom reading strategy.
+            image_format: Desired color/alpha format.
+        """
         paths = DirectoryPathResolver(dir_path).resolve()
+        stop = start + frames if frames is not None else None
+        selected_paths = paths[start:stop:step]
         return cls(
-            paths, reverse=reverse, strategy=strategy, image_format=image_format
+            selected_paths, reverse=reverse, strategy=strategy, image_format=image_format
         )
 
     @classmethod
     def from_paths(
         cls,
         img_paths: Sequence[Path | str],
+        start: int = 0,
+        frames: int | None = None,
+        step: int = 1,
         reverse: bool = False,
         strategy: ReadStrategy | None = None,
         image_format: ImageFormat = ImageFormat.RGBA,
     ) -> Self:
-        """Construct reader by resolving and sorting an explicit list of paths."""
+        """Construct reader by resolving an explicit list of paths with frame sampling.
+
+        Args:
+            img_paths: Explicit sequence of file paths.
+            start: 0-indexed starting frame index (defaults to 0).
+            frames: Optional maximum count of frames to read.
+            step: Sampling step interval (defaults to 1).
+            reverse: Whether to reverse the final selected sequence.
+            strategy: Optional custom reading strategy.
+            image_format: Desired color/alpha format.
+        """
         paths = ListPathResolver(img_paths).resolve()
+        stop = start + frames if frames is not None else None
+        selected_paths = paths[start:stop:step]
         return cls(
-            paths, reverse=reverse, strategy=strategy, image_format=image_format
+            selected_paths, reverse=reverse, strategy=strategy, image_format=image_format
         )

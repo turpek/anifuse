@@ -139,3 +139,63 @@ def test_image_sequence_reader_from_paths_factory(synthetic_image_dir: Path):
     assert len(reader) == 2
     assert reader._paths[0].name == "frame_01.png"
     assert reader._paths[1].name == "frame_02.png"
+
+
+@pytest.fixture
+def numbered_image_dir(tmp_path: Path) -> Path:
+    """Create a temporary directory containing six synthetic numbered PNG images."""
+    for i in range(1, 7):
+        img = Image.new((10, 10), ImageFormat.RGBA)
+        img.save(tmp_path / f"frame_{i:02d}.png")
+    return tmp_path
+
+
+@pytest.mark.parametrize(
+    ("start", "frames", "step", "reverse", "expected_names"),
+    [
+        (
+            0,
+            None,
+            1,
+            False,
+            [
+                "frame_01.png",
+                "frame_02.png",
+                "frame_03.png",
+                "frame_04.png",
+                "frame_05.png",
+                "frame_06.png",
+            ],
+        ),
+        (2, 3, 1, False, ["frame_03.png", "frame_04.png", "frame_05.png"]),
+        (0, None, 2, False, ["frame_01.png", "frame_03.png", "frame_05.png"]),
+        (1, 4, 2, False, ["frame_02.png", "frame_04.png"]),
+        (1, 3, 1, True, ["frame_04.png", "frame_03.png", "frame_02.png"]),
+    ],
+    ids=[
+        "full-sequence",
+        "start-and-frames",
+        "step-sampling",
+        "start-frames-step",
+        "sliced-and-reversed",
+    ],
+)
+def test_image_sequence_reader_sampling(
+    numbered_image_dir: Path,
+    start: int,
+    frames: int | None,
+    step: int,
+    reverse: bool,
+    expected_names: list[str],
+):
+    """Verify that ImageSequenceReader correctly applies start, frames, step, and reverse sampling."""
+    reader = ImageSequenceReader.from_dir(
+        numbered_image_dir,
+        start=start,
+        frames=frames,
+        step=step,
+        reverse=reverse,
+    )
+    actual_names = [p.name for p in reader._paths]
+
+    assert actual_names == expected_names
