@@ -38,7 +38,18 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-norecursedirs = ["scripts", "scratch", ".venv"]
+norecursedirs = [
+    ".*",
+    "build",
+    "dist",
+    "scripts",
+    "scratch",
+    ".venv",
+    "samples",
+    "benchmarks",
+    "planos",
+    "docs",
+]
 markers = [
     "slow: marca testes pesados ou demorados (desselecione com '-m \"not slow\"')",
 ]
