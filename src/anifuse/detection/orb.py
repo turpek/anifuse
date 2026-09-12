@@ -64,7 +64,7 @@ class _BaseOrbEstimator(Estimator):
         self,
         max_features: int = 5000,
         distance_threshold: float = 40.0,
-        nbest: int = 40,
+        nbest: int | None = None,
         translation_metric: Callable[[np.ndarray], tuple[float, float]] = discrete_mode,
         fast_threshold: int = 10,
     ) -> None:
@@ -109,6 +109,19 @@ class _BaseOrbEstimator(Estimator):
             valid = matches[: max(4, len(matches))]
         return matches, valid
 
+    def _select_match_pool(
+        self,
+        matches: list[cv2.DMatch],
+        valid: list[cv2.DMatch],
+    ) -> list[cv2.DMatch]:
+        """Select representative matches: prefers valid filtered matches, falling back to top matches."""
+        if len(valid) >= 4:
+            if self.nbest is not None and self.nbest > 0:
+                return valid[: self.nbest]
+            return valid
+        limit = self.nbest if (self.nbest is not None and self.nbest > 0) else 40
+        return matches[:limit]
+
     def _extract_matches(
         self,
         gray1: np.ndarray,
@@ -149,11 +162,14 @@ class _BaseOrbEstimator(Estimator):
         """Calculate scale-independent motion confidence based on consensus and inlier volume."""
         if len(diff) == 0:
             return 0.0
-        min_required = min(self.nbest, 20)
-        volume_factor = min(1.0, float(valid_count / max(1, min_required)))
+        min_required = 20
+        volume_factor = min(1.0, float(valid_count / float(min_required)))
         inliers = (np.abs(diff[:, 0] - delx) <= 2) & (np.abs(diff[:, 1] - dely) <= 2)
-        consensus_factor = float(np.sum(inliers) / len(diff))
-        return float(volume_factor * consensus_factor)
+        inlier_count = float(np.sum(inliers))
+        consensus_factor = inlier_count / len(diff)
+        inlier_score = min(1.0, inlier_count / 20.0)
+        effective_consensus = max(consensus_factor, inlier_score)
+        return float(volume_factor * effective_consensus)
 
 
 class OrbTranslationEstimator(_BaseOrbEstimator):
@@ -163,7 +179,7 @@ class OrbTranslationEstimator(_BaseOrbEstimator):
         self,
         max_features: int = 5000,
         distance_threshold: float = 40.0,
-        nbest: int = 40,
+        nbest: int | None = None,
         translation_metric: Callable[[np.ndarray], tuple[float, float]] = discrete_mode,
         fast_threshold: int = 10,
     ) -> None:
@@ -189,9 +205,9 @@ class OrbTranslationEstimator(_BaseOrbEstimator):
         if kp1 is None or kp2 is None or len(valid) < 4:
             return MotionEstimate(confidence=0.0), incoming
 
-        n_use = min(self.nbest, len(matches))
-        coords1 = [kp1[m.queryIdx].pt for m in matches[:n_use]]
-        coords2 = [kp2[m.trainIdx].pt for m in matches[:n_use]]
+        target_matches = self._select_match_pool(matches, valid)
+        coords1 = [kp1[m.queryIdx].pt for m in target_matches]
+        coords2 = [kp2[m.trainIdx].pt for m in target_matches]
         diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
 
         delx, dely = self.translation_metric(diff)
@@ -214,7 +230,7 @@ class OrbTransformEstimator(_BaseOrbEstimator):
         self,
         max_features: int = 5000,
         distance_threshold: float = 40.0,
-        nbest: int = 40,
+        nbest: int | None = None,
         translation_metric: Callable[[np.ndarray], tuple[float, float]] = discrete_mode,
         interp: InterpMode = InterpMode.LANCZOS,
         rotate_threshold: float = 0.10,
@@ -316,9 +332,9 @@ class OrbTransformEstimator(_BaseOrbEstimator):
             if kp1_r is None or kp2_r is None or len(valid_r) < 4:
                 return MotionEstimate(confidence=0.0), transformed_incoming
 
-            n_use = min(self.nbest, len(matches_r))
-            coords1 = [kp1_r[m.queryIdx].pt for m in matches_r[:n_use]]
-            coords2 = [kp2_r[m.trainIdx].pt for m in matches_r[:n_use]]
+            target_matches_r = self._select_match_pool(matches_r, valid_r)
+            coords1 = [kp1_r[m.queryIdx].pt for m in target_matches_r]
+            coords2 = [kp2_r[m.trainIdx].pt for m in target_matches_r]
             diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
 
             delx, dely = self.translation_metric(diff)
@@ -334,9 +350,9 @@ class OrbTransformEstimator(_BaseOrbEstimator):
             return estimate, transformed_incoming
 
         # Single step (no significant transform): compute translation directly
-        n_use = min(self.nbest, len(matches))
-        coords1 = [kp1[m.queryIdx].pt for m in matches[:n_use]]
-        coords2 = [kp2[m.trainIdx].pt for m in matches[:n_use]]
+        target_matches = self._select_match_pool(matches, valid)
+        coords1 = [kp1[m.queryIdx].pt for m in target_matches]
+        coords2 = [kp2[m.trainIdx].pt for m in target_matches]
         diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
 
         delx, dely = self.translation_metric(diff)
@@ -362,7 +378,7 @@ class OrbRotationEstimator(_BaseOrbEstimator):
         self,
         max_features: int = 5000,
         distance_threshold: float = 40.0,
-        nbest: int = 40,
+        nbest: int | None = None,
         translation_metric: Callable[[np.ndarray], tuple[float, float]] = discrete_mode,
         interp: InterpMode = InterpMode.LANCZOS,
         rotate_threshold: float = 0.10,
@@ -451,9 +467,9 @@ class OrbRotationEstimator(_BaseOrbEstimator):
             if kp1_r is None or kp2_r is None or len(valid_r) < 4:
                 return MotionEstimate(confidence=0.0), transformed_incoming
 
-            n_use = min(self.nbest, len(matches_r))
-            coords1 = [kp1_r[m.queryIdx].pt for m in matches_r[:n_use]]
-            coords2 = [kp2_r[m.trainIdx].pt for m in matches_r[:n_use]]
+            target_matches_r = self._select_match_pool(matches_r, valid_r)
+            coords1 = [kp1_r[m.queryIdx].pt for m in target_matches_r]
+            coords2 = [kp2_r[m.trainIdx].pt for m in target_matches_r]
             diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
 
             delx, dely = self.translation_metric(diff)
@@ -469,9 +485,9 @@ class OrbRotationEstimator(_BaseOrbEstimator):
             return estimate, transformed_incoming
 
         # Single-pass: pure translation
-        n_use = min(self.nbest, len(matches))
-        coords1 = [kp1[m.queryIdx].pt for m in matches[:n_use]]
-        coords2 = [kp2[m.trainIdx].pt for m in matches[:n_use]]
+        target_matches = self._select_match_pool(matches, valid)
+        coords1 = [kp1[m.queryIdx].pt for m in target_matches]
+        coords2 = [kp2[m.trainIdx].pt for m in target_matches]
         diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
 
         delx, dely = self.translation_metric(diff)
@@ -498,7 +514,7 @@ class OrbScaleEstimator(_BaseOrbEstimator):
         self,
         max_features: int = 5000,
         distance_threshold: float = 40.0,
-        nbest: int = 40,
+        nbest: int | None = None,
         translation_metric: Callable[[np.ndarray], tuple[float, float]] = discrete_mode,
         interp: InterpMode = InterpMode.LANCZOS,
         scale_threshold: float = 0.0010,
@@ -569,9 +585,9 @@ class OrbScaleEstimator(_BaseOrbEstimator):
             if kp1_s is None or kp2_s is None or len(valid_s) < 4:
                 return MotionEstimate(confidence=0.0), transformed_incoming
 
-            n_use = min(self.nbest, len(matches_s))
-            coords1 = [kp1_s[m.queryIdx].pt for m in matches_s[:n_use]]
-            coords2 = [kp2_s[m.trainIdx].pt for m in matches_s[:n_use]]
+            target_matches_s = self._select_match_pool(matches_s, valid_s)
+            coords1 = [kp1_s[m.queryIdx].pt for m in target_matches_s]
+            coords2 = [kp2_s[m.trainIdx].pt for m in target_matches_s]
             diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
 
             delx, dely = self.translation_metric(diff)
@@ -587,9 +603,9 @@ class OrbScaleEstimator(_BaseOrbEstimator):
             return estimate, transformed_incoming
 
         # Single-pass: pure translation
-        n_use = min(self.nbest, len(matches))
-        coords1 = [kp1[m.queryIdx].pt for m in matches[:n_use]]
-        coords2 = [kp2[m.trainIdx].pt for m in matches[:n_use]]
+        target_matches = self._select_match_pool(matches, valid)
+        coords1 = [kp1[m.queryIdx].pt for m in target_matches]
+        coords2 = [kp2[m.trainIdx].pt for m in target_matches]
         diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
 
         delx, dely = self.translation_metric(diff)
