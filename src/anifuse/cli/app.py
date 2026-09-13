@@ -26,7 +26,7 @@ from anifuse.detection.orb import (
     OrbTransformEstimator,
     OrbTranslationEstimator,
 )
-from anifuse.effects.border import BorderCutEffect
+from anifuse.effects import LinearBorderCutEffect, RotatedBorderCutEffect
 from anifuse.handlers import (
     HorizontalTranslationHandler,
     RotationHandler,
@@ -241,15 +241,21 @@ def _process_dir_stitch(
         (border_cut_left, border_cut_right, border_cut_top, border_cut_bottom)
     )
     if border_cut is not None or has_custom:
-        effects.append(
-            BorderCutEffect(
-                all=border_cut,
-                left=border_cut_left,
-                right=border_cut_right,
-                top=border_cut_top,
-                bottom=border_cut_bottom,
+        if motion_mode in ("rotation", "scale", "affine", "transform"):
+            cut_size = border_cut if border_cut is not None else max(
+                border_cut_left, border_cut_right, border_cut_top, border_cut_bottom
             )
-        )
+            effects.append(RotatedBorderCutEffect(size=cut_size))
+        else:
+            effects.append(
+                LinearBorderCutEffect(
+                    all=border_cut,
+                    left=border_cut_left,
+                    right=border_cut_right,
+                    top=border_cut_top,
+                    bottom=border_cut_bottom,
+                )
+            )
 
     console.print(
         f"[bold blue]Costurando:[/bold blue] {target_dir.name} "
@@ -432,6 +438,7 @@ def dir_cmd(
         int | None,
         typer.Option(
             "--border-cut",
+            "-b",
             help="Espessura uniforme de corte de borda na sobreposição.",
         ),
     ] = None,
@@ -613,6 +620,7 @@ def dirs_cmd(
         int | None,
         typer.Option(
             "--border-cut",
+            "-b",
             help="Espessura uniforme de corte de borda na sobreposição.",
         ),
     ] = None,
