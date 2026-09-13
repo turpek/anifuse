@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from enum import Enum
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 from anicrop.effect import Effect
+
+from anifuse.interfaces.stitcher import StitchContext
 
 if TYPE_CHECKING:
     from anicrop.layer import Layer
 
-    from anifuse.interfaces.estimator import MotionEstimate
+__all__ = [
+    "AnifuseEffect",
+    "BorderSide",
+    "LayerTarget",
+    "StitchContext",
+]
 
 
 class LayerTarget(str, Enum):
@@ -30,23 +38,17 @@ class BorderSide(str, Enum):
     BOTTOM = "bottom"
 
 
-@runtime_checkable
-class AnifuseEffect(Effect, Protocol):
-    """Protocol for anifuse-aware effects that update based on active layers and motion."""
+class AnifuseEffect(Effect, ABC):
+    """Abstract base class for anifuse-aware effects that update based on top and bottom layers."""
 
     target: LayerTarget
 
-    def update(
-        self,
-        top: Layer,
-        bottom: Layer,
-        motion: MotionEstimate,
-    ) -> None:
+    @abstractmethod
+    def update(self, top: Layer, bottom: Layer) -> None:
         """Update effect parameters before layer flattening.
 
         Args:
-            top: The top layer in the current composition stack.
-            bottom: The bottom layer in the current composition stack.
-            motion: The motion estimate between base and incoming frames.
+            top: Top layer in the current composition step.
+            bottom: Bottom layer in the current composition step.
         """
-        ...
+        pass

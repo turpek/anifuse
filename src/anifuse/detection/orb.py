@@ -7,9 +7,18 @@ from statistics import StatisticsError, mode
 
 import cv2
 import numpy as np
-from anicrop import ScratchBuffer, transform_image
+from anicrop import Layer, ScratchBuffer, transform_image
+from anicrop.edit_layer import EditLayer
 from anicrop.enums import ImageFormat, InterpMode
 from anicrop.image import Image
+from anicrop.spatial import Region
+from anicrop.transform import (
+    calculate_new_rect,
+    create_pivot_transform_rel,
+    mat_inverse,
+    mat_rotation,
+    mat_scale,
+)
 
 from anifuse.interfaces import Estimator, MotionEstimate
 
@@ -55,6 +64,38 @@ def resize_image(
     new_w = max(1, int(round(width * scale)))
     new_h = max(1, int(round(height * scale)))
     return cv2.resize(mat, (new_w, new_h), interpolation=interp.value)
+
+
+def _create_pre_transformed_layer(
+    incoming: Image,
+    transformed_image: Image,
+    angle: float = 0.0,
+    scale: float = 1.0,
+    pivot_x: float = 0.0,
+    pivot_y: float = 0.0,
+) -> Layer:
+    """Create a Layer preserving the original region while embedding the pre-transformed image.
+
+    The internal EditLayer is configured with the inverse distortion matrix,
+    allowing downstream handlers to apply rotation and scale to the Layer without
+    the anicrop renderer re-warping the already-transformed pixel buffer.
+    """
+    w0, h0 = float(incoming.width), float(incoming.height)
+    layer = Layer(Region.from_size(w0, h0))
+
+    M_s = create_pivot_transform_rel(mat_scale(scale, scale), w0, h0, pivot_x, pivot_y)
+    M_r = create_pivot_transform_rel(mat_rotation(angle), w0, h0, pivot_x, pivot_y)
+    M_dist = M_r @ M_s
+    M_dist_inv = mat_inverse(M_dist)
+
+    min_x, min_y, tw, th = calculate_new_rect(M_dist, (w0, h0))
+    edit = EditLayer(
+        transformed_image,
+        Region.from_rect(min_x, min_y, tw, th),
+        matrix=M_dist_inv,
+    )
+    layer._edits.append(edit)
+    return layer
 
 
 class _BaseOrbEstimator(Estimator):
@@ -196,14 +237,14 @@ class OrbTranslationEstimator(_BaseOrbEstimator):
         ref: Image,
         incoming: Image,
         mask: np.ndarray | None = None,
-    ) -> tuple[MotionEstimate, Image]:
-        """Estimate 2D translation in a single pass, returning the unmodified incoming frame."""
+    ) -> tuple[MotionEstimate, Layer]:
+        """Estimate 2D translation in a single pass, returning a Layer with the incoming frame."""
         gray1 = self._to_gray(ref)
         gray2 = self._to_gray(incoming)
 
         kp1, _, kp2, matches, valid = self._extract_matches(gray1, gray2, mask=mask)
         if kp1 is None or kp2 is None or len(valid) < 4:
-            return MotionEstimate(confidence=0.0), incoming
+            return MotionEstimate(confidence=0.0), Layer(incoming)
 
         target_matches = self._select_match_pool(matches, valid)
         coords1 = [kp1[m.queryIdx].pt for m in target_matches]
@@ -220,7 +261,7 @@ class OrbTranslationEstimator(_BaseOrbEstimator):
             scale=1.0,
             confidence=confidence,
         )
-        return estimate, incoming
+        return estimate, Layer(incoming)
 
 
 class OrbTransformEstimator(_BaseOrbEstimator):
@@ -253,7 +294,7 @@ class OrbTransformEstimator(_BaseOrbEstimator):
         ref: Image,
         incoming: Image,
         mask: np.ndarray | None = None,
-    ) -> tuple[MotionEstimate, Image]:
+    ) -> tuple[MotionEstimate, Layer]:
         """Estimate rotation and scale, rotating the frame if necessary, then refine translation."""
         gray1 = self._to_gray(ref)
         gray2 = self._to_gray(incoming)
@@ -262,7 +303,7 @@ class OrbTransformEstimator(_BaseOrbEstimator):
             gray1, gray2, mask=mask
         )
         if kp1 is None or desc1 is None or kp2 is None or len(valid) < 4:
-            return MotionEstimate(confidence=0.0), incoming
+            return MotionEstimate(confidence=0.0), Layer(incoming)
 
         pts1 = np.array([kp1[m.queryIdx].pt for m in valid], dtype=np.float32).reshape(
             -1, 1, 2
@@ -300,11 +341,21 @@ class OrbTransformEstimator(_BaseOrbEstimator):
                     if mask is not None
                     else None
                 )
+                layer = _create_pre_transformed_layer(
+                    incoming,
+                    transformed_incoming,
+                    angle=0.0,
+                    scale=apply_scale,
+                    pivot_x=0.0,
+                    pivot_y=0.0,
+                )
             else:
                 transformed_incoming = transform_image(
                     incoming,
                     angle=-apply_angle,
                     scale=apply_scale,
+                    pivot_angle=(0.0, 0.0),
+                    pivot_scale=(0.0, 0.0),
                     interp=self.interp,
                     dst=self._scratch,
                 )
@@ -313,11 +364,21 @@ class OrbTransformEstimator(_BaseOrbEstimator):
                         Image(mask, ImageFormat.GRAY),
                         angle=-apply_angle,
                         scale=apply_scale,
+                        pivot_angle=(0.0, 0.0),
+                        pivot_scale=(0.0, 0.0),
                         interp=InterpMode.NEAREST,
                         dst=self._mask_scratch,
                     )[...]
                     if mask is not None
                     else None
+                )
+                layer = _create_pre_transformed_layer(
+                    incoming,
+                    transformed_incoming.crop(),
+                    angle=-apply_angle,
+                    scale=apply_scale,
+                    pivot_x=0.0,
+                    pivot_y=0.0,
                 )
 
             gray2_transformed = self._to_gray(transformed_incoming)
@@ -330,7 +391,7 @@ class OrbTransformEstimator(_BaseOrbEstimator):
             )
 
             if kp1_r is None or kp2_r is None or len(valid_r) < 4:
-                return MotionEstimate(confidence=0.0), transformed_incoming
+                return MotionEstimate(confidence=0.0), layer
 
             target_matches_r = self._select_match_pool(matches_r, valid_r)
             coords1 = [kp1_r[m.queryIdx].pt for m in target_matches_r]
@@ -347,7 +408,7 @@ class OrbTransformEstimator(_BaseOrbEstimator):
                 scale=scale,
                 confidence=confidence,
             )
-            return estimate, transformed_incoming
+            return estimate, layer
 
         # Single step (no significant transform): compute translation directly
         target_matches = self._select_match_pool(matches, valid)
@@ -365,7 +426,7 @@ class OrbTransformEstimator(_BaseOrbEstimator):
             scale=1.0,
             confidence=confidence,
         )
-        return estimate, incoming
+        return estimate, Layer(incoming)
 
 
 class OrbRotationEstimator(_BaseOrbEstimator):
@@ -401,7 +462,7 @@ class OrbRotationEstimator(_BaseOrbEstimator):
         ref: Image,
         incoming: Image,
         mask: np.ndarray | None = None,
-    ) -> tuple[MotionEstimate, Image]:
+    ) -> tuple[MotionEstimate, Layer]:
         """Estimate rotation, rotating incoming frame if needed, then refine translation."""
         gray1 = self._to_gray(ref)
         gray2 = self._to_gray(incoming)
@@ -410,7 +471,7 @@ class OrbRotationEstimator(_BaseOrbEstimator):
             gray1, gray2, mask=mask
         )
         if kp1 is None or desc1 is None or kp2 is None or len(valid) < 4:
-            return MotionEstimate(confidence=0.0), incoming
+            return MotionEstimate(confidence=0.0), Layer(incoming)
 
         pts1 = np.array([kp1[m.queryIdx].pt for m in valid], dtype=np.float32).reshape(
             -1, 1, 2
@@ -441,8 +502,18 @@ class OrbRotationEstimator(_BaseOrbEstimator):
                 incoming,
                 angle=-apply_angle,
                 scale=apply_scale,
+                pivot_angle=(0.0, 0.0),
+                pivot_scale=(0.0, 0.0),
                 interp=self.interp,
                 dst=self._scratch,
+            )
+            layer = _create_pre_transformed_layer(
+                incoming,
+                transformed_incoming.crop(),
+                angle=-apply_angle,
+                scale=apply_scale,
+                pivot_x=0.0,
+                pivot_y=0.0,
             )
             gray2_rot = self._to_gray(transformed_incoming)
             transformed_mask = (
@@ -450,6 +521,8 @@ class OrbRotationEstimator(_BaseOrbEstimator):
                     Image(mask, ImageFormat.GRAY),
                     angle=-apply_angle,
                     scale=apply_scale,
+                    pivot_angle=(0.0, 0.0),
+                    pivot_scale=(0.0, 0.0),
                     interp=InterpMode.NEAREST,
                     dst=self._mask_scratch,
                 )[...]
@@ -465,7 +538,7 @@ class OrbRotationEstimator(_BaseOrbEstimator):
             )
 
             if kp1_r is None or kp2_r is None or len(valid_r) < 4:
-                return MotionEstimate(confidence=0.0), transformed_incoming
+                return MotionEstimate(confidence=0.0), layer
 
             target_matches_r = self._select_match_pool(matches_r, valid_r)
             coords1 = [kp1_r[m.queryIdx].pt for m in target_matches_r]
@@ -482,7 +555,7 @@ class OrbRotationEstimator(_BaseOrbEstimator):
                 scale=scale,
                 confidence=confidence,
             )
-            return estimate, transformed_incoming
+            return estimate, layer
 
         # Single-pass: pure translation
         target_matches = self._select_match_pool(matches, valid)
@@ -500,7 +573,7 @@ class OrbRotationEstimator(_BaseOrbEstimator):
             scale=1.0,
             confidence=confidence,
         )
-        return estimate, incoming
+        return estimate, Layer(incoming)
 
 
 class OrbScaleEstimator(_BaseOrbEstimator):
@@ -535,7 +608,7 @@ class OrbScaleEstimator(_BaseOrbEstimator):
         ref: Image,
         incoming: Image,
         mask: np.ndarray | None = None,
-    ) -> tuple[MotionEstimate, Image]:
+    ) -> tuple[MotionEstimate, Layer]:
         """Estimate scale, resizing incoming frame if needed, then refine translation."""
         gray1 = self._to_gray(ref)
         gray2 = self._to_gray(incoming)
@@ -544,7 +617,7 @@ class OrbScaleEstimator(_BaseOrbEstimator):
             gray1, gray2, mask=mask
         )
         if kp1 is None or desc1 is None or kp2 is None or len(valid) < 4:
-            return MotionEstimate(confidence=0.0), incoming
+            return MotionEstimate(confidence=0.0), Layer(incoming)
 
         pts1 = np.array([kp1[m.queryIdx].pt for m in valid], dtype=np.float32).reshape(
             -1, 1, 2
@@ -568,6 +641,14 @@ class OrbScaleEstimator(_BaseOrbEstimator):
                 incoming[...], apply_scale, interp=self.interp
             )
             transformed_incoming = Image(transformed_arr, incoming.format)
+            layer = _create_pre_transformed_layer(
+                incoming,
+                transformed_incoming,
+                angle=0.0,
+                scale=apply_scale,
+                pivot_x=0.0,
+                pivot_y=0.0,
+            )
             gray2_scaled = self._to_gray(transformed_incoming)
             transformed_mask = (
                 resize_image(mask, apply_scale, interp=InterpMode.NEAREST)
@@ -583,7 +664,7 @@ class OrbScaleEstimator(_BaseOrbEstimator):
             )
 
             if kp1_s is None or kp2_s is None or len(valid_s) < 4:
-                return MotionEstimate(confidence=0.0), transformed_incoming
+                return MotionEstimate(confidence=0.0), layer
 
             target_matches_s = self._select_match_pool(matches_s, valid_s)
             coords1 = [kp1_s[m.queryIdx].pt for m in target_matches_s]
@@ -600,7 +681,7 @@ class OrbScaleEstimator(_BaseOrbEstimator):
                 scale=scale,
                 confidence=confidence,
             )
-            return estimate, transformed_incoming
+            return estimate, layer
 
         # Single-pass: pure translation
         target_matches = self._select_match_pool(matches, valid)
@@ -618,4 +699,4 @@ class OrbScaleEstimator(_BaseOrbEstimator):
             scale=1.0,
             confidence=confidence,
         )
-        return estimate, incoming
+        return estimate, Layer(incoming)

@@ -8,6 +8,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from anicrop.image import Image
+    from anicrop.layer import Layer
 
 
 @dataclass(frozen=True)
@@ -30,7 +31,7 @@ class Estimator(ABC):
         ref: Image,
         incoming: Image,
         mask: np.ndarray | None = None,
-    ) -> tuple[MotionEstimate, Image]:
+    ) -> tuple[MotionEstimate, Layer]:
         """Estimate relative motion between reference and incoming images.
 
         Args:
@@ -39,6 +40,6 @@ class Estimator(ABC):
             mask: Optional single-channel uint8 exclusion mask.
 
         Returns:
-            A tuple of (MotionEstimate, processed_incoming_image).
+            A tuple of (MotionEstimate, processed_incoming_layer).
         """
         pass

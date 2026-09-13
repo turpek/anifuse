@@ -9,24 +9,21 @@ from anicrop.composition import flatten
 from anicrop.enums import InterpMode
 
 from anifuse.interfaces.effect import AnifuseEffect, LayerTarget
-from anifuse.interfaces.stitcher import FrameAccumulator, StackOrder
+from anifuse.interfaces.stitcher import FrameAccumulator, StackOrder, StitchContext
 
 if TYPE_CHECKING:
     from anicrop.image import Image
     from anicrop.layer import Layer
-
-    from anifuse.interfaces.estimator import MotionEstimate
 
 
 def apply_effects(
     top: Layer,
     bottom: Layer,
     effects: Sequence[AnifuseEffect],
-    motion: MotionEstimate,
 ) -> None:
     """Update and bind post-processing effects to target layers before flattening."""
     for effect in effects:
-        effect.update(top, bottom, motion)
+        effect.update(top, bottom)
         if effect.target == LayerTarget.TOP:
             top.add_effect(effect)
         elif effect.target == LayerTarget.BOTTOM:
@@ -50,10 +47,10 @@ class FirstOnTopAccumulator(FrameAccumulator):
         self._interp = interp
         self._effects = tuple(effects)
 
-    def push(self, incoming: Layer, motion: MotionEstimate) -> None:
+    def push(self, context: StitchContext) -> None:
         """Flatten incoming layer underneath the accumulated canvas with effects applied."""
-        top, bottom = self._base, incoming
-        apply_effects(top, bottom, self._effects, motion)
+        top, bottom = self._base, context.incoming
+        apply_effects(top, bottom, self._effects)
         self._base = flatten([bottom, top], interp=self._interp)
         top.clear_effects()
         bottom.clear_effects()
@@ -82,10 +79,10 @@ class LastOnTopAccumulator(FrameAccumulator):
         self._interp = interp
         self._effects = tuple(effects)
 
-    def push(self, incoming: Layer, motion: MotionEstimate) -> None:
+    def push(self, context: StitchContext) -> None:
         """Flatten incoming layer on top of the accumulated canvas with effects applied."""
-        top, bottom = incoming, self._base
-        apply_effects(top, bottom, self._effects, motion)
+        top, bottom = context.incoming, self._base
+        apply_effects(top, bottom, self._effects)
         self._base = flatten([bottom, top], interp=self._interp)
         top.clear_effects()
         bottom.clear_effects()
@@ -115,28 +112,24 @@ class DualAccumulator(FrameAccumulator):
         self._interp = interp
         self._effects = tuple(effects)
 
-    def _flatten_first_on_top(
-        self, incoming: Layer, motion: MotionEstimate
-    ) -> None:
-        top, bottom = self._first_on_top, incoming
-        apply_effects(top, bottom, self._effects, motion)
+    def _flatten_first_on_top(self, context: StitchContext) -> None:
+        top, bottom = self._first_on_top, context.incoming
+        apply_effects(top, bottom, self._effects)
         self._first_on_top = flatten([bottom, top], interp=self._interp)
         top.clear_effects()
         bottom.clear_effects()
 
-    def _flatten_last_on_top(
-        self, incoming: Layer, motion: MotionEstimate
-    ) -> None:
-        top, bottom = incoming, self._last_on_top
-        apply_effects(top, bottom, self._effects, motion)
+    def _flatten_last_on_top(self, context: StitchContext) -> None:
+        top, bottom = context.incoming, self._last_on_top
+        apply_effects(top, bottom, self._effects)
         self._last_on_top = flatten([bottom, top], interp=self._interp)
         top.clear_effects()
         bottom.clear_effects()
 
-    def push(self, incoming: Layer, motion: MotionEstimate) -> None:
+    def push(self, context: StitchContext) -> None:
         """Update both first-on-top and last-on-top composites with isolated effects."""
-        self._flatten_first_on_top(incoming, motion)
-        self._flatten_last_on_top(incoming, motion)
+        self._flatten_first_on_top(context)
+        self._flatten_last_on_top(context)
 
     @property
     def reference_layer(self) -> Layer:

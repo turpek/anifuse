@@ -5,11 +5,22 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
-from anicrop.enums import ImageFormat
+from anicrop.enums import ImageFormat, InterpMode
 from anicrop.image import Image
 from typer.testing import CliRunner
 
-from anifuse.cli.app import app
+from anifuse.cli.app import _resolve_estimator_and_handlers, app
+from anifuse.detection.orb import (
+    OrbRotationEstimator,
+    OrbScaleEstimator,
+    OrbTransformEstimator,
+    OrbTranslationEstimator,
+)
+from anifuse.handlers import (
+    RotationHandler,
+    ScaleHandler,
+    TranslationHandler,
+)
 
 runner = CliRunner()
 
@@ -106,3 +117,93 @@ def test_cli_dir_warns_on_empty_directory(tmp_path: Path):
 
     assert result.exit_code == 0
     assert "nenhuma imagem suportada encontrada" in result.output
+
+
+@pytest.mark.parametrize(
+    ("motion_mode", "expected_estimator_cls", "expected_handler_classes"),
+    [
+        ("translation", OrbTranslationEstimator, [TranslationHandler]),
+        ("scale", OrbScaleEstimator, [ScaleHandler, TranslationHandler]),
+        ("rotation", OrbRotationEstimator, [RotationHandler, TranslationHandler]),
+        (
+            "affine",
+            OrbTransformEstimator,
+            [ScaleHandler, RotationHandler, TranslationHandler],
+        ),
+    ],
+    ids=["translation", "scale", "rotation", "affine"],
+)
+def test_resolve_estimator_and_handlers_configures_expected_chain(
+    motion_mode: str,
+    expected_estimator_cls: type,
+    expected_handler_classes: list[type],
+):
+    """Verify that _resolve_estimator_and_handlers pairs estimators with correct transform handlers."""
+    estimator, handlers = _resolve_estimator_and_handlers(
+        motion_mode=motion_mode,
+        direction="auto",
+        interp=InterpMode.LANCZOS,
+        rotate_thresh=0.10,
+        scale_thresh=0.0010,
+        fast_thresh=10,
+        trans_thresh=0.0,
+    )
+
+    assert isinstance(estimator, expected_estimator_cls)
+    assert [type(h) for h in handlers] == expected_handler_classes
+
+
+def test_cli_dir_with_rotation_motion_mode_stitches(
+    synthetic_scene_dirs: tuple[Path, Path],
+    tmp_path: Path,
+):
+    """Verify that dir command stitches frames when --motion-mode rotation is specified."""
+    dir1, _ = synthetic_scene_dirs
+    out_dir = tmp_path / "output_rot"
+    result = runner.invoke(
+        app,
+        [
+            "dir",
+            "-s",
+            "0",
+            "-n",
+            "2",
+            "-o",
+            str(out_dir),
+            "--motion-mode",
+            "rotation",
+            "--quiet",
+            str(dir1),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (out_dir / "scene_01_top2.png").exists()
+
+
+def test_cli_dir_with_scale_motion_mode_stitches(
+    synthetic_scene_dirs: tuple[Path, Path],
+    tmp_path: Path,
+):
+    """Verify that dir command stitches frames when --motion-mode scale is specified."""
+    dir1, _ = synthetic_scene_dirs
+    out_dir = tmp_path / "output_scale"
+    result = runner.invoke(
+        app,
+        [
+            "dir",
+            "-s",
+            "0",
+            "-n",
+            "2",
+            "-o",
+            str(out_dir),
+            "--motion-mode",
+            "scale",
+            "--quiet",
+            str(dir1),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (out_dir / "scene_01_top2.png").exists()

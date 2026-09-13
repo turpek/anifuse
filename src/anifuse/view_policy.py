@@ -19,6 +19,7 @@ from anifuse.mask import DefaultMaskView
 
 if TYPE_CHECKING:
     from anicrop.image import Image
+    from anicrop.layer import Layer
 
     from anifuse.interfaces import Estimator, MaskView
 
@@ -148,7 +149,7 @@ class AdaptiveViewPolicy(ViewPolicy):
         incoming: Image,
         sections: Iterable[Section],
         frame_idx: int = 0,
-    ) -> tuple[AlignmentResult, Image]:
+    ) -> tuple[AlignmentResult, Layer]:
         """Resolve frame alignment by returning the first candidate section meeting confidence threshold."""
         incoming_img, mask_arr = self._mask_view.get_mask(incoming, frame_idx)
 

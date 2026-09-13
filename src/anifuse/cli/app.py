@@ -29,6 +29,8 @@ from anifuse.detection.orb import (
 from anifuse.effects.border import BorderCutEffect
 from anifuse.handlers import (
     HorizontalTranslationHandler,
+    RotationHandler,
+    ScaleHandler,
     TranslationHandler,
     VerticalTranslationHandler,
 )
@@ -121,29 +123,37 @@ def _resolve_estimator_and_handlers(
             f"Para '{motion_mode}', utilize '--direction auto'."
         )
 
-    handlers: list[TransformHandler]
-    if norm_dir in ("horizontal", "h"):
-        handlers = [HorizontalTranslationHandler(threshold=trans_thresh)]
-    elif norm_dir in ("vertical", "v"):
-        handlers = [VerticalTranslationHandler(threshold=trans_thresh)]
-    else:
-        handlers = [TranslationHandler(threshold=trans_thresh)]
-
     estimator: Estimator
+    handlers: list[TransformHandler]
+
     if norm_motion in ("translation", "trans"):
         estimator = OrbTranslationEstimator(fast_threshold=fast_thresh)
+        if norm_dir in ("horizontal", "h"):
+            handlers = [HorizontalTranslationHandler(threshold=trans_thresh)]
+        elif norm_dir in ("vertical", "v"):
+            handlers = [VerticalTranslationHandler(threshold=trans_thresh)]
+        else:
+            handlers = [TranslationHandler(threshold=trans_thresh)]
     elif norm_motion == "scale":
         estimator = OrbScaleEstimator(
             interp=interp,
             scale_threshold=scale_thresh,
             fast_threshold=fast_thresh,
         )
+        handlers = [
+            ScaleHandler(threshold=scale_thresh),
+            TranslationHandler(threshold=trans_thresh),
+        ]
     elif norm_motion in ("rotation", "rot"):
         estimator = OrbRotationEstimator(
             interp=interp,
             rotate_threshold=rotate_thresh,
             fast_threshold=fast_thresh,
         )
+        handlers = [
+            RotationHandler(threshold=rotate_thresh),
+            TranslationHandler(threshold=trans_thresh),
+        ]
     elif norm_motion in ("affine", "transform"):
         estimator = OrbTransformEstimator(
             interp=interp,
@@ -151,6 +161,11 @@ def _resolve_estimator_and_handlers(
             scale_threshold=scale_thresh,
             fast_threshold=fast_thresh,
         )
+        handlers = [
+            ScaleHandler(threshold=scale_thresh),
+            RotationHandler(threshold=rotate_thresh),
+            TranslationHandler(threshold=trans_thresh),
+        ]
     else:
         raise typer.BadParameter(
             f"Modo de movimento desconhecido: '{motion_mode}'. Opções: translation, scale, rotation, affine."
