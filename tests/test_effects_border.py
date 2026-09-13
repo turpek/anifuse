@@ -1,4 +1,4 @@
-"""Unit tests for BorderCutEffect seam erasing."""
+"""Unit tests for LinearBorderCutEffect and RotatedBorderCutEffect seam erasing."""
 
 from __future__ import annotations
 
@@ -10,7 +10,8 @@ from anicrop.enums import ImageFormat
 from anicrop.image import Image
 from anicrop.layer import Layer
 
-from anifuse.effects.border import BorderCutEffect
+from anifuse.accumulator import apply_effects
+from anifuse.effects import LinearBorderCutEffect, RotatedBorderCutEffect
 from anifuse.handlers import TranslationHandler
 from anifuse.interfaces.estimator import MotionEstimate
 from anifuse.interfaces.reader import Frame, FrameReader
@@ -63,7 +64,7 @@ def test_border_cut_auto_detects_left_edge_on_positive_dx():
     bottom = _create_solid_layer((255, 0, 0, 255), x=0, y=0)
     top = _create_solid_layer((0, 255, 0, 255), x=20, y=0)
 
-    effect = BorderCutEffect(all=5)
+    effect = LinearBorderCutEffect(all=5)
     effect.update(top, bottom)
     rendered_image = effect.apply(top.edits[0].image, np.eye(3))
     arr = rendered_image[...]
@@ -77,7 +78,7 @@ def test_border_cut_auto_detects_right_edge_on_negative_dx():
     bottom = _create_solid_layer((255, 0, 0, 255), x=20, y=0)
     top = _create_solid_layer((0, 255, 0, 255), x=0, y=0)
 
-    effect = BorderCutEffect(all=5)
+    effect = LinearBorderCutEffect(all=5)
     effect.update(top, bottom)
     rendered_image = effect.apply(top.edits[0].image, np.eye(3))
     arr = rendered_image[...]
@@ -91,7 +92,7 @@ def test_border_cut_auto_detects_top_edge_on_positive_dy():
     bottom = _create_solid_layer((255, 0, 0, 255), x=0, y=0)
     top = _create_solid_layer((0, 255, 0, 255), x=0, y=20)
 
-    effect = BorderCutEffect(all=5)
+    effect = LinearBorderCutEffect(all=5)
     effect.update(top, bottom)
     rendered_image = effect.apply(top.edits[0].image, np.eye(3))
     arr = rendered_image[...]
@@ -105,7 +106,7 @@ def test_border_cut_auto_detects_bottom_edge_on_negative_dy():
     bottom = _create_solid_layer((255, 0, 0, 255), x=0, y=20)
     top = _create_solid_layer((0, 255, 0, 255), x=0, y=0)
 
-    effect = BorderCutEffect(all=5)
+    effect = LinearBorderCutEffect(all=5)
     effect.update(top, bottom)
     rendered_image = effect.apply(top.edits[0].image, np.eye(3))
     arr = rendered_image[...]
@@ -119,7 +120,7 @@ def test_border_cut_auto_detects_l_cut_on_diagonal_movement():
     bottom = _create_solid_layer((255, 0, 0, 255), x=0, y=0)
     top = _create_solid_layer((0, 255, 0, 255), x=20, y=20)
 
-    effect = BorderCutEffect(all=5)
+    effect = LinearBorderCutEffect(all=5)
     effect.update(top, bottom)
     rendered_image = effect.apply(top.edits[0].image, np.eye(3))
     arr = rendered_image[...]
@@ -135,7 +136,7 @@ def test_border_cut_manual_sides_override_automatic_detection():
     bottom = _create_solid_layer((255, 0, 0, 255), x=0, y=0)
     top = _create_solid_layer((0, 255, 0, 255), x=20, y=20)
 
-    effect = BorderCutEffect(left=8, top=12)
+    effect = LinearBorderCutEffect(left=8, top=12)
     effect.update(top, bottom)
     rendered_image = effect.apply(top.edits[0].image, np.eye(3))
     arr = rendered_image[...]
@@ -151,7 +152,7 @@ def test_border_cut_clamps_to_overlap_boundary():
     bottom = _create_solid_layer((255, 0, 0, 255), x=0, y=0)
     top = _create_solid_layer((0, 255, 0, 255), x=95, y=0)
 
-    effect = BorderCutEffect(all=20)
+    effect = LinearBorderCutEffect(all=20)
     effect.update(top, bottom)
     rendered_image = effect.apply(top.edits[0].image, np.eye(3))
     arr = rendered_image[...]
@@ -165,7 +166,7 @@ def test_border_cut_no_overlap_leaves_image_intact():
     bottom = _create_solid_layer((255, 0, 0, 255), x=0, y=0)
     top = _create_solid_layer((0, 255, 0, 255), x=200, y=200)
 
-    effect = BorderCutEffect(all=10)
+    effect = LinearBorderCutEffect(all=10)
     effect.update(top, bottom)
     rendered_image = effect.apply(top.edits[0].image, np.eye(3))
     arr = rendered_image[...]
@@ -174,7 +175,7 @@ def test_border_cut_no_overlap_leaves_image_intact():
 
 
 def test_scene_stitcher_executes_with_border_cut_effect():
-    """Verify that SceneStitcher executes smoothly when passing BorderCutEffect to stitch."""
+    """Verify that SceneStitcher executes smoothly when passing LinearBorderCutEffect to stitch."""
     arr1 = np.full((100, 100, 4), [255, 0, 0, 255], dtype=np.uint8)
     arr2 = np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8)
     frames = [
@@ -190,7 +191,7 @@ def test_scene_stitcher_executes_with_border_cut_effect():
     result = stitcher.stitch(
         reader,
         stack_order=StackOrder.LAST_ON_TOP,
-        effects=[BorderCutEffect(all=5)],
+        effects=[LinearBorderCutEffect(all=5)],
     )
 
     assert isinstance(result, Image)
@@ -204,9 +205,8 @@ def test_border_cut_rotated_frame_cuts_tilted_seam():
     top.transform.rotate(5)
     top.transform.translate(20, 0)
 
-    effect = BorderCutEffect(all=4)
-    effect.update(top, bottom)
-    top.add_effect(effect)
+    effect = RotatedBorderCutEffect(size=4)
+    apply_effects(top, bottom, [effect])
     result = flatten([bottom, top])
     arr = result.edits[0].image[...]
 
@@ -222,9 +222,8 @@ def test_border_cut_rotated_frame_with_scale():
     top.transform.rotate(5)
     top.transform.translate(10, 0)
 
-    effect = BorderCutEffect(all=5)
-    effect.update(top, bottom)
-    top.add_effect(effect)
+    effect = RotatedBorderCutEffect(size=5)
+    apply_effects(top, bottom, [effect])
     result = flatten([bottom, top])
     arr = result.edits[0].image[...]
 
@@ -232,16 +231,15 @@ def test_border_cut_rotated_frame_with_scale():
     assert arr.shape[1] > 100
 
 
-def test_border_cut_pure_scale_applies_axis_aligned_cut():
-    """Verify that pure scale without rotation generates axis-aligned cut correctly."""
+def test_border_cut_pure_scale_applies_cut():
+    """Verify that pure scale without rotation generates cut correctly."""
     bottom = Layer(Image(np.full((100, 100, 4), [255, 0, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
     top = Layer(Image(np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
     top.transform.scale(1.1, 1.1)
     top.transform.translate(10, 0)
 
-    effect = BorderCutEffect(all=5)
-    effect.update(top, bottom)
-    top.add_effect(effect)
+    effect = RotatedBorderCutEffect(size=5)
+    apply_effects(top, bottom, [effect])
     result = flatten([bottom, top])
     arr = result.edits[0].image[...]
     assert arr.shape[0] > 100
@@ -258,9 +256,8 @@ def test_border_cut_preserves_alpha_when_bottom_is_rotated():
     top = Layer(Image(np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
     top.transform.translate(30, 0)
 
-    effect = BorderCutEffect(all=5)
-    effect.update(top, bottom)
-    top.add_effect(effect)
+    effect = RotatedBorderCutEffect(size=5)
+    apply_effects(top, bottom, [effect])
     result = flatten([bottom, top])
     arr = result.edits[0].image[...]
     holes = (ref_arr[..., 3] == 255) & (arr[..., 3] == 0)
@@ -278,11 +275,25 @@ def test_border_cut_preserves_alpha_when_both_are_rotated():
     top = Layer(Image(np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
     top.transform.rotate(5).translate(30, 0)
 
-    effect = BorderCutEffect(all=5)
-    effect.update(top, bottom)
-    top.add_effect(effect)
+    effect = RotatedBorderCutEffect(size=5)
+    apply_effects(top, bottom, [effect])
     result = flatten([bottom, top])
     arr = result.edits[0].image[...]
     holes = (ref_arr[..., 3] == 255) & (arr[..., 3] == 0)
 
     assert np.count_nonzero(holes) == 0
+
+
+def test_border_cut_cuts_straight_edge_when_bottom_is_rotated():
+    """Verify that straight frame edges bordering rotated bottom layer are cut by erosion."""
+    bottom = Layer(Image(np.full((100, 100, 4), [255, 0, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
+    bottom.transform.rotate(15).translate(0, 50)
+    top = Layer(Image(np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
+
+    effect = RotatedBorderCutEffect(size=5)
+    apply_effects(top, bottom, [effect])
+    result = flatten([bottom, top])
+    arr = result.edits[0].image[...]
+    revealed_bottom = np.count_nonzero((arr[:, :, 0] == 255) & (arr[:, :, 1] == 0))
+
+    assert revealed_bottom > 0

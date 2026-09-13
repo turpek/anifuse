@@ -95,9 +95,9 @@ Você também pode utilizar o motor programmaticamente no seu código:
 ```python
 from anicrop.enums import BlendMode
 from anifuse import (
-    BorderCutEffect,
     HorizontalTranslationHandler,
     ImageSequenceReader,
+    LinearBorderCutEffect,
     SceneStitcher,
     StackOrder,
 )
@@ -119,7 +119,7 @@ stitcher = SceneStitcher.from_default(
 panorama = stitcher.stitch(
     reader,
     stack_order=StackOrder.LAST_ON_TOP,
-    effects=[BorderCutEffect(all=5)],
+    effects=[LinearBorderCutEffect(all=5)],
     blend_mode=BlendMode.HARD_MASKING,
 )
 

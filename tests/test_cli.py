@@ -207,3 +207,61 @@ def test_cli_dir_with_scale_motion_mode_stitches(
 
     assert result.exit_code == 0
     assert (out_dir / "scene_01_top2.png").exists()
+
+
+def test_cli_dir_with_linear_border_cut_stitches(
+    synthetic_scene_dirs: tuple[Path, Path],
+    tmp_path: Path,
+):
+    """Verify that dir command stitches frames with linear border cut options."""
+    dir1, _ = synthetic_scene_dirs
+    out_dir = tmp_path / "output_linear_cut"
+    result = runner.invoke(
+        app,
+        [
+            "dir",
+            "-s",
+            "0",
+            "-n",
+            "2",
+            "-o",
+            str(out_dir),
+            "-b",
+            "5",
+            "--quiet",
+            str(dir1),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (out_dir / "scene_01_top2.png").exists()
+
+
+def test_cli_dir_with_rotated_border_cut_stitches(
+    synthetic_scene_dirs: tuple[Path, Path],
+    tmp_path: Path,
+):
+    """Verify that dir command stitches frames with rotated border cut on rotation motion mode."""
+    dir1, _ = synthetic_scene_dirs
+    out_dir = tmp_path / "output_rot_cut"
+    result = runner.invoke(
+        app,
+        [
+            "dir",
+            "-s",
+            "0",
+            "-n",
+            "2",
+            "-o",
+            str(out_dir),
+            "--motion-mode",
+            "rotation",
+            "-b",
+            "5",
+            "--quiet",
+            str(dir1),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (out_dir / "scene_01_top2.png").exists()

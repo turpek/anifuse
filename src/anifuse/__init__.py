@@ -16,6 +16,10 @@ from anifuse.accumulator import (
     create_accumulator,
 )
 from anifuse.config import config
+from anifuse.effects import (
+    LinearBorderCutEffect,
+    RotatedBorderCutEffect,
+)
 from anifuse.handlers import (
     HorizontalTranslationHandler,
     RotationHandler,
@@ -85,12 +89,14 @@ __all__ = [
     "HorizontalTranslationHandler",
     "ImageSequenceReader",
     "LastOnTopAccumulator",
+    "LinearBorderCutEffect",
     "ListPathResolver",
     "MaskView",
     "MotionEstimate",
     "PathResolver",
     "ProgressCallback",
     "ReadStrategy",
+    "RotatedBorderCutEffect",
     "RotationHandler",
     "ScaleHandler",
     "SceneStitcher",
