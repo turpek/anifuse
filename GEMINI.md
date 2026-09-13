@@ -189,19 +189,22 @@ O `anifuse` consome o motor gráfico `anicrop`. Sempre que precisar consultar m�
   - Legado: $2033 \times 1266$
   - `OrbScaleEstimator`: $2036 \times 1262$ (diferença residual de apenas 3 a 4px, ortogonalidade e nitidez preservadas).
 
-### 8.5. Sistema de Efeitos e Corte Seco de Borda (`BorderCutEffect`)
+### 8.5. Sistema de Efeitos e Corte de Borda (`LinearBorderCutEffect` & `RotatedBorderCutEffect`)
 - **Protocolo `AnifuseEffect` e `LayerTarget`:** Efeitos de composição gráfica implementam `update(top: Layer, bottom: Layer, motion: MotionEstimate)` e indicam seu alvo de aplicação (`TOP`, `BOTTOM` ou `BOTH`).
 - **Orquestração Centralizada no `Accumulator`:** O acumulador é a entidade que gerencia o ciclo de vida dos efeitos (`apply_effects` $\to$ `flatten` $\to$ `clear_effects`), isolando fluxos no `DualAccumulator` e mapeando o referencial correto de `top`/`bottom`.
 - **Separação Arquitetural Motor vs. Tarefa:** O `SceneStitcher` configura a infraestrutura fixa de visão computacional (`handlers`, `view_policy`, `on_progress`). Parâmetros variáveis por vídeo (`stack_order`, `effects`, `blend_mode`, `interp`) são passados diretamente na chamada de `stitch()`.
-- **Corte Seco de Borda (`BorderCutEffect`):**
-  - Alvo fixo na camada do topo (`LayerTarget.TOP`) para revelar a camada límpida de baixo.
-  - Extrai `axis_y, axis_x = overlap.to_slice()` e reaproveita o eixo intacto para fatiar in-place no canal alfa (`arr[sy, sx, 3] = 0`), com proteção `min` contra sobreposições finas.
-  - Confinamento estrito à sobreposição: nunca abre furos em áreas de novo cenário.
-  - Suporta detecção automática de direção via $\Delta X, \Delta Y = (\text{top} - \text{bottom}).\text{top\_left}$, corte em "L" para movimentos diagonais e espessuras manuais independentes por borda.
-  - **Suporte a Rotação e Escala:**
-    - **Translação Pura e Escala Ortogonal:** Utiliza fatiamento retangular direto (`_build_axis_aligned_slices`), preservando ortogonalidade e zero-copy.
-    - **Quadros Rotacionados:** Extrai os 4 cantos originais do frame via `top.region.size`, projeta para o referencial local do bounding box via `top.transform.matrix` e rasteriza as linhas de emenda inclinadas com `cv2.line` sobre `np.ascontiguousarray(arr[sy, sx, 3])`, confinado estritamente ao overlap.
-    - **Modularização Limpa:** A lógica interna é estruturada em métodos privados com `_` (`_resolve_sides`, `_build_axis_aligned_slices`, `_build_rotated_lines`, `_apply_rotated_lines`, `_apply_axis_aligned_slices`).
+- **Desacoplamento e Princípio do Menor Privilégio:** Efeitos NÃO armazenam referências aos objetos `Layer` (top/bottom) para evitar vazamento de estado e violação de encapsulamento. Apenas regiões e máscaras pré-calculadas são retidas durante `update()`.
+- **`LinearBorderCutEffect` (Translação Pura / Pans Ortogonais):**
+  - Alvo fixo na camada do topo (`LayerTarget.TOP`).
+  - Utiliza `top.global_region.shrink(**shrink)` e `view.clear_rect(local_roi, fill_value=0, invert=True, alpha_only=True)`.
+  - Confinamento estrito à sobreposição: se o corte esvaziar a sobreposição, limpa todo o overlap de forma segura.
+  - Usa contador interno que zera em `update()` para garantir aplicação única por frame em `apply()`.
+- **`RotatedBorderCutEffect` (Rotações, Zoom e Afim Geral):**
+  - Alvo fixo na camada do topo (`LayerTarget.TOP`).
+  - Em quadros rotacionados, emendas oblíquas e cantos salientes são eliminados via erosão morfológica (`cv2.erode`) do canal alfa da camada de topo, restrita estritamente à máscara opaca da base na área de sobreposição.
+  - Alocação zero-copy via reaproveitamento de `anicrop.ScratchBuffer` nativo (`_scratch_eroded` e `_scratch_diff`).
+  - Elimina completamente pontas/dentes residuais nas quinas da sobreposição.
+- **Despacho Automático na CLI:** A CLI (`anifuse dir` / `anifuse dirs`) despacha automaticamente `RotatedBorderCutEffect(size=cut_size)` quando `--motion-mode` for rotação, escala ou afim; e `LinearBorderCutEffect(...)` para translação.
 
 ---
 

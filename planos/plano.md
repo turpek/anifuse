@@ -149,13 +149,16 @@ class FrameReader(ABC):
 * Quando a camada de cima não possui distorção (`_apply_axis_aligned`) ou ambas possuem rotações distintas, o cálculo de corte antigo assumia que toda a área de intersecção retangular do bounding box (`top.global_region & bottom.global_region`) era coberta por pixels físicos na camada de baixo.
 * Caso a camada de baixo possuísse transparência ($\alpha = 0$) em partes do bounding box (por exemplo, após rotações no canvas ou emendas inclinadas), o corte desenhado sobre os cantos vazios gerava **furos transparentes** no resultado final, apagando conteúdo legítimo do topo.
 
-#### 2. Solução Implementada: Clipping Analítico Liang-Barsky
-* **Resolução 100% Geométrica Analítica:**
-  - No referencial local da base, suas dimensões físicas são sempre $[0, W_{\text{bottom}}] \times [0, H_{\text{bottom}}]$.
-  - Projeção de cada aresta de corte de `top` ($P_1 \to P_2$) para o espaço canônico de `bottom` via $M_{\text{rel}} = M_{\text{bottom}}^{-1} \cdot M_{\text{top}}$.
-  - Ceifamento analítico Liang-Barsky 2D do segmento projetado contra $[0, W_{\text{bottom}}] \times [0, H_{\text{bottom}}]$, obtendo o trecho estrito $[C_1', C_2']$.
-  - Re-projeção para as coordenadas de `top` via $M_{\text{rel}}^{-1}$, delimitando a faixa de corte exclusivamente onde a base física existe.
-  - Zero acesso a buffers alheios, eliminando furos transparentes com custo computacional $< 0.001\text{ms}$.
-- [x] Reproduzir o bug com testes unitários cobrindo base rotacionada e ambas as camadas rotacionadas.
-- [x] Implementar a rotina analítica `clip_segment_to_rect` e integrar no `BorderCutEffect`.
-- [x] Validar que nenhum pixel do topo é transformado em furo transparente sobre os cantos da base.
+#### 2. Limitação do Liang-Barsky e Decisão da Alternativa 2 (Amostragem Alpha da Base)
+* **Limitação do Liang-Barsky 1D:**
+  - O corte analítico vetorial de linhas tem espessura física (ex: 10px). O término do traço em ângulo ortogonal à aresta inclinada deixa uma cunha triangular não cortada invadindo a base (efeito "dente" vermelho visível em `samples/rotation/clip.png`).
+  - Além disso, em composições acumuladas de múltiplos frames com rotação, a base deixa de ser um retângulo simples.
+* **Decisão Arquitetural: Alternativa 2 (Amostragem do Canal Alfa da Base na Fatia da Emenda):**
+  1. O efeito é acoplado e adicionado a ambas as camadas (`LayerTarget.BOTH`).
+  2. O corte deve ser calculado e aplicado durante o `apply()`.
+  3. No primeiro `apply()` (camada base), coleta-se a view da ROI do canal alfa da base.
+  4. No segundo `apply()` (camada do topo), aplica-se o corte da emenda mascarado pela presença de opacidade da base (`alpha_base >= min_alpha`), garantindo corte perfeito sem dentes e sem furar áreas vazias.
+- [ ] Implementar a Alternativa 2 no `BorderCutEffect` (`src/anifuse/effects/border.py`).
+- [ ] Validar com testes unitários em `tests/test_effects_border.py`.
+- [ ] Executar lint (`ruff check`) e formatação (`autopep8`).
+

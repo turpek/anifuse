@@ -1,0 +1,3 @@
+# ai-memory project scope configuration
+workspace = "default"
+project = "anifuse"
