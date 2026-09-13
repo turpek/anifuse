@@ -246,3 +246,43 @@ def test_border_cut_pure_scale_applies_axis_aligned_cut():
     arr = result.edits[0].image[...]
     assert arr.shape[0] > 100
     assert arr.shape[1] > 100
+
+
+def test_border_cut_preserves_alpha_when_bottom_is_rotated():
+    """Verify that top layer alpha is preserved over transparent areas when bottom is rotated."""
+    bottom = Layer(Image(np.full((100, 100, 4), [255, 0, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
+    bottom.transform.rotate(15).translate(0, 0)
+    top_ref = Layer(Image(np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
+    top_ref.transform.translate(30, 0)
+    ref_arr = flatten([bottom, top_ref]).edits[0].image[...]
+    top = Layer(Image(np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
+    top.transform.translate(30, 0)
+
+    effect = BorderCutEffect(all=5)
+    effect.update(top, bottom)
+    top.add_effect(effect)
+    result = flatten([bottom, top])
+    arr = result.edits[0].image[...]
+    holes = (ref_arr[..., 3] == 255) & (arr[..., 3] == 0)
+
+    assert np.count_nonzero(holes) == 0
+
+
+def test_border_cut_preserves_alpha_when_both_are_rotated():
+    """Verify that top layer alpha is preserved over transparent areas when both layers are rotated."""
+    bottom = Layer(Image(np.full((100, 100, 4), [255, 0, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
+    bottom.transform.rotate(15).translate(0, 0)
+    top_ref = Layer(Image(np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
+    top_ref.transform.rotate(5).translate(30, 0)
+    ref_arr = flatten([bottom, top_ref]).edits[0].image[...]
+    top = Layer(Image(np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
+    top.transform.rotate(5).translate(30, 0)
+
+    effect = BorderCutEffect(all=5)
+    effect.update(top, bottom)
+    top.add_effect(effect)
+    result = flatten([bottom, top])
+    arr = result.edits[0].image[...]
+    holes = (ref_arr[..., 3] == 255) & (arr[..., 3] == 0)
+
+    assert np.count_nonzero(holes) == 0
