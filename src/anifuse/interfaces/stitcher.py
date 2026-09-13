@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -12,11 +13,24 @@ from anicrop.enums import BlendMode, InterpMode
 if TYPE_CHECKING:
     from anicrop.image import Image
     from anicrop.layer import Layer
+    from anicrop.spatial import Region
 
     from anifuse.interfaces.effect import AnifuseEffect
     from anifuse.interfaces.estimator import MotionEstimate
     from anifuse.interfaces.reader import FrameReader
     from anifuse.interfaces.view_policy import AlignmentResult
+
+
+@dataclass(frozen=True)
+class StitchContext:
+    """Contextual spatial, geometric, and motion data for a stitch step."""
+
+    base_region: Region
+    incoming_region: Region
+    base: Layer
+    incoming: Layer
+    motion: MotionEstimate
+    frame_idx: int = 0
 
 
 class StackOrder(StrEnum):
@@ -34,8 +48,8 @@ class FrameAccumulator(ABC):
     """Abstract strategy for accumulating aligned incoming frames into a canvas composite."""
 
     @abstractmethod
-    def push(self, incoming: Layer, motion: MotionEstimate) -> None:
-        """Push an aligned incoming layer into the canvas composite with its motion."""
+    def push(self, context: StitchContext) -> None:
+        """Push an aligned incoming layer into the canvas composite with its stitch context."""
         pass
 
     @property

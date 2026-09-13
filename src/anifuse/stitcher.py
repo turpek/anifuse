@@ -8,11 +8,17 @@ from typing import TYPE_CHECKING, Self
 from anicrop.enums import BlendMode, InterpMode
 from anicrop.image import Image
 from anicrop.layer import Layer
+from anicrop.spatial import Region
 
 from anifuse.accumulator import create_accumulator
 from anifuse.detection.orb import OrbTransformEstimator
-from anifuse.handlers import TranslationHandler
-from anifuse.interfaces.stitcher import ProgressCallback, StackOrder, Stitcher
+from anifuse.handlers import RotationHandler, ScaleHandler, TranslationHandler
+from anifuse.interfaces.stitcher import (
+    ProgressCallback,
+    StackOrder,
+    StitchContext,
+    Stitcher,
+)
 from anifuse.view_policy import AdaptiveViewPolicy, CrossSections
 
 if TYPE_CHECKING:
@@ -54,7 +60,7 @@ class SceneStitcher(Stitcher):
         interp: InterpMode = InterpMode.LANCZOS,
         on_progress: ProgressCallback | None = None,
     ) -> Self:
-        """Convenience factory using OrbTransformEstimator and TranslationHandler by default."""
+        """Convenience factory using OrbTransformEstimator and geometric transform handlers by default."""
         actual_estimator = (
             estimator
             if estimator is not None
@@ -68,7 +74,11 @@ class SceneStitcher(Stitcher):
         actual_handlers: list[TransformHandler] = (
             list(handlers)
             if handlers is not None
-            else [TranslationHandler(threshold=translation_threshold)]
+            else [
+                ScaleHandler(threshold=scale_threshold),
+                RotationHandler(threshold=rotate_threshold),
+                TranslationHandler(threshold=translation_threshold),
+            ]
         )
         policy = AdaptiveViewPolicy(
             estimator=actual_estimator,
@@ -112,22 +122,26 @@ class SceneStitcher(Stitcher):
             sections = sections_cls(
                 accumulator.reference_layer.global_region, last_region
             )
-            alignment, ready_image = self.view_policy.resolve(
+            alignment, layer2 = self.view_policy.resolve(
                 base=accumulator.reference_layer.edits[0].image,
                 incoming=frame.image,
                 sections=sections,
                 frame_idx=frame.idx,
             )
-
-            layer2 = Layer(
-                ready_image,
-                name=f"frame_{frame.idx}",
-                blend_mode=blend_mode,
-            )
+            layer2.name = f"frame_{frame.idx}"
+            layer2.blend_mode = blend_mode
             for handler in self.handlers:
                 handler.apply(layer2, alignment)
 
-            accumulator.push(layer2, alignment.motion)
+            context = StitchContext(
+                base_region=accumulator.reference_layer.region,
+                incoming_region=Region.from_size(*frame.image.size),
+                base=accumulator.reference_layer,
+                incoming=layer2,
+                motion=alignment.motion,
+                frame_idx=frame.idx,
+            )
+            accumulator.push(context)
             last_region = layer2.global_region
 
             if self.on_progress is not None:

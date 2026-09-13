@@ -4,21 +4,33 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
+import cv2
 import numpy as np
 import pytest
+from anicrop import transform_image
 from anicrop.enums import ImageFormat
 from anicrop.image import Image
+from anicrop.layer import Layer
+from anicrop.render import warp_patch
+from anicrop.spatial import Region
 
-from anifuse.detection.orb import OrbTransformEstimator
-from anifuse.handlers import TranslationHandler
+from anifuse.detection.orb import OrbTransformEstimator, resize_image
+from anifuse.handlers import (
+    RotationHandler,
+    ScaleHandler,
+    TranslationHandler,
+)
 from anifuse.interfaces import (
     AlignmentResult,
     Frame,
+    FrameAccumulator,
     FrameReader,
     MotionEstimate,
     Section,
     StackOrder,
+    StitchContext,
     ViewPolicy,
 )
 from anifuse.stitcher import SceneStitcher
@@ -54,10 +66,10 @@ class _MockViewPolicy(ViewPolicy):
         incoming: Image,
         sections: Iterable[Section],
         frame_idx: int = 0,
-    ) -> tuple[AlignmentResult, Image]:
+    ) -> tuple[AlignmentResult, Layer]:
         first_section = next(iter(sections))
         motion = MotionEstimate(dx=self.dx, dy=self.dy, confidence=0.99)
-        return AlignmentResult(ref=first_section.ref, motion=motion), incoming
+        return AlignmentResult(ref=first_section.ref, motion=motion), Layer(incoming)
 
 
 @pytest.fixture
@@ -77,6 +89,20 @@ def synthetic_sequence() -> list[Frame]:
         arr[:, :] = [i * 60, 50, 50, 255]
         frames.append(Frame(idx=i, image=Image(arr, ImageFormat.RGBA)))
     return frames
+
+
+@pytest.fixture
+def synthetic_pattern_frame() -> Image:
+    """Generate a synthetic 300x300 frame with high-contrast distinct textured features."""
+    img = np.zeros((300, 300, 3), dtype=np.uint8)
+    for i in range(12):
+        x = 30 + (i % 4) * 60
+        y = 30 + (i // 4) * 80
+        cv2.rectangle(img, (x, y), (x + 40, y + 40), (200, 200, 200), -1)
+        cv2.putText(
+            img, f"K{i}", (x + 5, y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2
+        )
+    return Image(img, ImageFormat.RGB)
 
 
 def test_stitch_raises_value_error_on_empty_reader():
@@ -178,15 +204,17 @@ def test_stitch_invokes_on_progress_callback(synthetic_sequence: list[Frame]):
 
 
 def test_from_default_configures_default_handlers_and_policy():
-    """Verify that from_default factory initializes TranslationHandler and AdaptiveViewPolicy."""
+    """Verify that from_default factory initializes scale, rotation, and translation handlers."""
     stitcher = SceneStitcher.from_default()
 
-    assert len(stitcher.handlers) == 1
-    assert isinstance(stitcher.handlers[0], TranslationHandler)
+    assert len(stitcher.handlers) == 3
+    assert isinstance(stitcher.handlers[0], ScaleHandler)
+    assert isinstance(stitcher.handlers[1], RotationHandler)
+    assert isinstance(stitcher.handlers[2], TranslationHandler)
 
 
 def test_from_default_forwards_threshold_parameters():
-    """Verify that from_default propagates custom threshold parameters to handler and estimator."""
+    """Verify that from_default propagates custom threshold parameters to handlers and estimator."""
     stitcher = SceneStitcher.from_default(
         rotate_threshold=0.25,
         scale_threshold=0.005,
@@ -194,13 +222,109 @@ def test_from_default_forwards_threshold_parameters():
         fast_threshold=7,
     )
 
-    handler = stitcher.handlers[0]
+    scale_handler = stitcher.handlers[0]
+    rot_handler = stitcher.handlers[1]
+    trans_handler = stitcher.handlers[2]
     policy = stitcher.view_policy
-    assert isinstance(handler, TranslationHandler)
-    assert handler.threshold == 2.0
+    assert isinstance(scale_handler, ScaleHandler)
+    assert scale_handler.threshold == 0.005
+    assert isinstance(rot_handler, RotationHandler)
+    assert rot_handler.threshold == 0.25
+    assert isinstance(trans_handler, TranslationHandler)
+    assert trans_handler.threshold == 2.0
     assert isinstance(policy, AdaptiveViewPolicy)
     estimator = policy._estimator
     assert isinstance(estimator, OrbTransformEstimator)
     assert estimator.rotate_threshold == 0.25
     assert estimator.scale_threshold == 0.005
     assert estimator.fast_threshold == 7
+
+
+class _MockContextAccumulator(FrameAccumulator):
+    """Mock accumulator capturing pushed StitchContext instances."""
+
+    def __init__(self, base_layer: Layer) -> None:
+        self._base = base_layer
+        self.pushed_contexts: list[StitchContext] = []
+
+    def push(self, context: StitchContext) -> None:
+        self.pushed_contexts.append(context)
+
+    @property
+    def reference_layer(self) -> Layer:
+        return self._base
+
+    def result(self) -> Image:
+        return self._base.edits[0].image
+
+
+def test_stitch_passes_stitch_context_to_accumulator(
+    synthetic_sequence: list[Frame],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Verify that stitcher constructs and forwards StitchContext to the accumulator."""
+    mock_acc: list[_MockContextAccumulator] = []
+
+    def mock_create(*args, **kwargs) -> _MockContextAccumulator:
+        acc = _MockContextAccumulator(args[1])
+        mock_acc.append(acc)
+        return acc
+
+    monkeypatch.setattr("anifuse.stitcher.create_accumulator", mock_create)
+
+    reader = _MockFrameReader(synthetic_sequence)
+    stitcher = SceneStitcher(
+        handlers=[TranslationHandler()],
+        view_policy=_MockViewPolicy(dx=15.0, dy=-5.0),
+    )
+
+    stitcher.stitch(reader)
+
+    acc = mock_acc[0]
+    first_ctx = acc.pushed_contexts[0]
+    assert len(acc.pushed_contexts) == 2
+    assert isinstance(first_ctx, StitchContext)
+    assert first_ctx.base_region == Region.from_size(100, 100)
+    assert first_ctx.incoming_region == Region.from_size(100, 100)
+    assert first_ctx.motion.dx == 15.0
+    assert first_ctx.motion.dy == -5.0
+    assert first_ctx.frame_idx == 2
+
+
+def test_stitch_pipeline_with_rotation_guarantees_fast_path(
+    synthetic_pattern_frame: Image,
+):
+    """Verify that stitching frames with rotation takes the fast-path without warp_patch."""
+    frame1 = Frame(idx=1, image=synthetic_pattern_frame)
+    frame2 = Frame(
+        idx=2,
+        image=transform_image(synthetic_pattern_frame, angle=5.0),
+    )
+    reader = _MockFrameReader([frame1, frame2])
+    stitcher = SceneStitcher.from_default()
+
+    with patch("anicrop.render.warp_patch", wraps=warp_patch) as mock_warp:
+        result = stitcher.stitch(reader, stack_order=StackOrder.FIRST_ON_TOP)
+
+        assert isinstance(result, Image)
+        mock_warp.assert_not_called()
+
+
+def test_stitch_pipeline_with_scale_guarantees_fast_path(
+    synthetic_pattern_frame: Image,
+):
+    """Verify that stitching frames with scale takes the fast-path without warp_patch."""
+    scaled_arr = resize_image(synthetic_pattern_frame[...], scale=1.1)
+    frame1 = Frame(idx=1, image=synthetic_pattern_frame)
+    frame2 = Frame(
+        idx=2,
+        image=Image(scaled_arr, synthetic_pattern_frame.format),
+    )
+    reader = _MockFrameReader([frame1, frame2])
+    stitcher = SceneStitcher.from_default()
+
+    with patch("anicrop.render.warp_patch", wraps=warp_patch) as mock_warp:
+        result = stitcher.stitch(reader, stack_order=StackOrder.FIRST_ON_TOP)
+
+        assert isinstance(result, Image)
+        mock_warp.assert_not_called()

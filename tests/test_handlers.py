@@ -1,28 +1,19 @@
 """Tests for geometric transformation handlers."""
 
 import numpy as np
-import pytest
 from anicrop.layer import Layer
 from anicrop.spatial import Region
 
 from anifuse.handlers import (
     HorizontalTranslationHandler,
+    RotationHandler,
+    ScaleHandler,
     TranslationHandler,
     VerticalTranslationHandler,
 )
 from anifuse.interfaces import AlignmentResult, MotionEstimate
 
-try:
-    from anifuse.handlers import (  # type: ignore[attr-defined]
-        RotationHandler,
-        ScaleHandler,
-    )
-except ImportError:
-    RotationHandler = None  # type: ignore[assignment, misc]
-    ScaleHandler = None  # type: ignore[assignment, misc]
 
-
-@pytest.mark.skip(reason="Aguardando implementação do estimador de 1 passo")
 def test_rotation_handler_applies_rotation_when_above_threshold():
     """Verify that RotationHandler applies counter-rotation when angle exceeds threshold."""
     layer = Layer(Region.from_rect(0, 0, 100, 100))
@@ -38,7 +29,6 @@ def test_rotation_handler_applies_rotation_when_above_threshold():
     assert not np.allclose(layer.transform.matrix, np.eye(3))
 
 
-@pytest.mark.skip(reason="Aguardando implementação do estimador de 1 passo")
 def test_rotation_handler_skips_when_below_threshold():
     """Verify that RotationHandler leaves layer untouched when angle is within deadzone."""
     layer = Layer(Region.from_rect(0, 0, 100, 100))
@@ -54,7 +44,6 @@ def test_rotation_handler_skips_when_below_threshold():
     assert np.allclose(layer.transform.matrix, np.eye(3))
 
 
-@pytest.mark.skip(reason="Aguardando implementação do estimador de 1 passo")
 def test_scale_handler_applies_scale_when_above_threshold():
     """Verify that ScaleHandler applies inverse scaling when scale exceeds threshold."""
     layer = Layer(Region.from_rect(0, 0, 100, 100))
@@ -70,7 +59,6 @@ def test_scale_handler_applies_scale_when_above_threshold():
     assert not np.allclose(layer.transform.matrix, np.eye(3))
 
 
-@pytest.mark.skip(reason="Aguardando implementação do estimador de 1 passo")
 def test_scale_handler_skips_when_below_threshold():
     """Verify that ScaleHandler leaves layer untouched when scale is within deadzone."""
     layer = Layer(Region.from_rect(0, 0, 100, 100))

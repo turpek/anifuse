@@ -4,12 +4,63 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from anifuse.config import config
 from anifuse.interfaces.handler import TransformHandler
 
 if TYPE_CHECKING:
     from anicrop.layer import Layer
 
     from anifuse.interfaces.view_policy import AlignmentResult
+
+
+class RotationHandler(TransformHandler):
+    """Counter-rotates target layer around pivot when estimated angle exceeds threshold."""
+
+    def __init__(
+        self,
+        threshold: float | None = None,
+        pivot_x: float = 0.0,
+        pivot_y: float = 0.0,
+    ) -> None:
+        """Initialize handler with rotation deadzone threshold and pivot coordinates."""
+        self.threshold = (
+            config.rotate_threshold if threshold is None else threshold
+        )
+        self.pivot_x = pivot_x
+        self.pivot_y = pivot_y
+
+    def apply(self, target: Layer, alignment: AlignmentResult) -> None:
+        """Counter-rotate target layer around pivot if angle exceeds threshold."""
+        angle = alignment.motion.angle
+        if abs(angle) > self.threshold:
+            target.transform.rotate(
+                -angle, pivot_x=self.pivot_x, pivot_y=self.pivot_y
+            )
+
+
+class ScaleHandler(TransformHandler):
+    """Counter-scales target layer around pivot when estimated scale deviation exceeds threshold."""
+
+    def __init__(
+        self,
+        threshold: float | None = None,
+        pivot_x: float = 0.0,
+        pivot_y: float = 0.0,
+    ) -> None:
+        """Initialize handler with scale deadzone threshold and pivot coordinates."""
+        self.threshold = (
+            config.scale_threshold if threshold is None else threshold
+        )
+        self.pivot_x = pivot_x
+        self.pivot_y = pivot_y
+
+    def apply(self, target: Layer, alignment: AlignmentResult) -> None:
+        """Counter-scale target layer around pivot if scale deviation exceeds threshold."""
+        scale = alignment.motion.scale
+        if abs(1.0 - scale) > self.threshold and scale > 0:
+            target.transform.scale(
+                1.0 / scale, 1.0 / scale, pivot_x=self.pivot_x, pivot_y=self.pivot_y
+            )
 
 
 class TranslationHandler(TransformHandler):

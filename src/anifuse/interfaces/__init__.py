@@ -18,6 +18,7 @@ from anifuse.interfaces.stitcher import (
     FrameAccumulator,
     ProgressCallback,
     StackOrder,
+    StitchContext,
     Stitcher,
 )
 from anifuse.interfaces.view_policy import (
@@ -46,6 +47,7 @@ __all__ = [
     "Section",
     "SectionGenerator",
     "StackOrder",
+    "StitchContext",
     "Stitcher",
     "TransformHandler",
     "ViewPolicy",

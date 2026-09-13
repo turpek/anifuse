@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from anicrop.image import Image
+    from anicrop.layer import Layer
     from anicrop.spatial import Region
 
     from anifuse.interfaces.estimator import MotionEstimate
@@ -59,7 +60,7 @@ class ViewPolicy(ABC):
         incoming: Image,
         sections: Iterable[Section],
         frame_idx: int = 0,
-    ) -> tuple[AlignmentResult, Image]:
+    ) -> tuple[AlignmentResult, Layer]:
         """Evaluate candidate sections, apply mask to incoming, and estimate motion."""
         pass
 

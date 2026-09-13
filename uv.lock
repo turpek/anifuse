@@ -8,8 +8,8 @@ resolution-markers = [
 
 [[package]]
 name = "anicrop"
-version = "0.6.2"
-source = { git = "https://github.com/turpek/anicrop.git?branch=main#593e6ec32ee948174fce7c1701ba688e01c20474" }
+version = "0.6.4"
+source = { git = "https://github.com/turpek/anicrop.git?branch=main#b7655f2d00f108fa8c818c57e49e913e72667f3b" }
 dependencies = [
     { name = "imagesize" },
     { name = "numpy" },

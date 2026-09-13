@@ -3,7 +3,7 @@
 import cv2
 import numpy as np
 import pytest
-from anicrop import transform_image
+from anicrop import Layer, transform_image
 from anicrop.enums import ImageFormat
 from anicrop.image import Image
 
@@ -65,7 +65,8 @@ def test_orb_translation_estimator_detects_shift(synthetic_pattern_frame: Image)
     estimate, returned_frame = estimator.estimate(synthetic_pattern_frame, shifted_frame)
 
     assert isinstance(estimate, MotionEstimate)
-    assert returned_frame is shifted_frame
+    assert isinstance(returned_frame, Layer)
+    assert returned_frame.edits[0].image is shifted_frame
     assert estimate.dx == pytest.approx(shift_x, abs=2.0)
     assert estimate.dy == pytest.approx(shift_y, abs=2.0)
 
@@ -79,7 +80,8 @@ def test_orb_translation_estimator_returns_zero_confidence_on_blank_frames():
     estimate, returned_frame = estimator.estimate(blank_ref, blank_incoming)
 
     assert estimate.confidence == 0.0
-    assert returned_frame is blank_incoming
+    assert isinstance(returned_frame, Layer)
+    assert returned_frame.edits[0].image is blank_incoming
 
 
 def test_orb_transform_estimator_detects_pure_translation(
@@ -97,7 +99,7 @@ def test_orb_transform_estimator_detects_pure_translation(
     estimate, returned_frame = estimator.estimate(synthetic_pattern_frame, shifted_frame)
 
     assert isinstance(estimate, MotionEstimate)
-    assert isinstance(returned_frame, Image)
+    assert isinstance(returned_frame, Layer)
     assert estimate.dx == pytest.approx(shift_x, abs=2.0)
     assert estimate.dy == pytest.approx(shift_y, abs=2.0)
 
@@ -112,7 +114,7 @@ def test_orb_transform_estimator_detects_rotation_and_prealigns_frame(
     estimate, returned_frame = estimator.estimate(synthetic_pattern_frame, rotated_frame)
 
     assert isinstance(estimate, MotionEstimate)
-    assert isinstance(returned_frame, Image)
+    assert isinstance(returned_frame, Layer)
     assert estimate.confidence > 0.0
     assert abs(estimate.angle) == pytest.approx(5.0, abs=1.0)
     assert estimate.scale == pytest.approx(1.0, abs=0.05)
@@ -182,7 +184,7 @@ def test_orb_scale_estimator_detects_scale_with_zero_angle(
     estimate, returned_frame = estimator.estimate(synthetic_pattern_frame, scaled_frame)
 
     assert isinstance(estimate, MotionEstimate)
-    assert isinstance(returned_frame, Image)
+    assert isinstance(returned_frame, Layer)
     assert estimate.angle == 0.0
     assert estimate.scale == pytest.approx(1.1, rel=0.05)
 
@@ -197,7 +199,7 @@ def test_orb_rotation_estimator_detects_rotation(
     estimate, returned_frame = estimator.estimate(synthetic_pattern_frame, rotated_frame)
 
     assert isinstance(estimate, MotionEstimate)
-    assert isinstance(returned_frame, Image)
+    assert isinstance(returned_frame, Layer)
     assert abs(estimate.angle) == pytest.approx(5.0, abs=1.0)
     assert estimate.scale == pytest.approx(1.0, abs=0.05)
 
