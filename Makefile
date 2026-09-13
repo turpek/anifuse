@@ -88,26 +88,41 @@ pull-dev:
 	@echo "==> Atualizando branch dev a partir do GitHub..."
 	git pull origin dev
 
-# Sincroniza código de produção da 'dev' para a 'main' de forma semântica e sem repetições
+# Sincroniza commits de produção da 'dev' para a 'main' individualmente (histórico limpo e semântico)
 sync-main:
-	@echo "==> Sincronizando código de produção com a branch main..."
-	@LAST_POINT=$$(git log -1 --format="%b" main 2>/dev/null | grep -oE 'sync-point: [a-f0-9]+' | cut -d' ' -f2); \
-	CURRENT_DEV=$$(git rev-parse --short dev); \
+	@echo "==> Sincronizando commits de produção com a branch main..."
+	@LAST_POINT=$$(git log -50 --format="%b" main 2>/dev/null | grep -oE '(sync-point: [a-f0-9]+|\(cherry picked from commit [a-f0-9]+\))' | head -1 | grep -oE '[a-f0-9]{7,40}'); \
 	if [ -n "$$LAST_POINT" ]; then \
 		RANGE="$$LAST_POINT..dev"; \
 	else \
 		RANGE="main..dev"; \
 	fi; \
-	CHANGES=$$(git log $$RANGE --oneline --no-merges --invert-grep --grep="bench" --grep="docs(plano)" src/ tests/ README.md pyproject.toml Makefile uv.lock | sed 's/^[a-f0-9]* /- /'); \
-	if [ -z "$$CHANGES" ]; then \
+	COMMITS=$$(git log $$RANGE --oneline --reverse -- src/ tests/ README.md pyproject.toml Makefile uv.lock .gitignore assets/ | cut -d' ' -f1); \
+	if [ -z "$$COMMITS" ]; then \
 		echo "Nenhuma alteração de produção para sincronizar."; \
 	else \
-		git checkout main && \
-		git rm -rf --ignore-unmatch src/ tests/ >/dev/null 2>&1 || true; \
-		git checkout dev -- src/ tests/ README.md pyproject.toml Makefile .gitignore uv.lock && \
-		git commit -m "release: sincroniza código de produção da dev" -m "$$CHANGES" -m "sync-point: $$CURRENT_DEV" && \
-		git checkout dev && \
-		echo "==> Sincronização concluída! Retornado para a branch dev."; \
+		echo "Commits de produção a sincronizar:"; \
+		git log $$RANGE --oneline --reverse -- src/ tests/ README.md pyproject.toml Makefile uv.lock .gitignore assets/; \
+		git checkout main || exit 1; \
+		SUCCESS=1; \
+		for C in $$COMMITS; do \
+			echo "--> Aplicando $$C na main..."; \
+			NON_PROD=$$(git diff-tree --no-commit-id --name-only -r $$C | grep -vE '^(src/|tests/|README\.md|pyproject\.toml|Makefile|uv\.lock|\.gitignore|assets/)' || true); \
+			if [ -z "$$NON_PROD" ]; then \
+				git cherry-pick -x $$C || { echo "Falha ao aplicar $$C"; git cherry-pick --abort; SUCCESS=0; break; }; \
+			else \
+				git cherry-pick -n $$C || { echo "Falha no cherry-pick de $$C"; git cherry-pick --abort; SUCCESS=0; break; }; \
+				git rm -rf --ignore-unmatch $$NON_PROD >/dev/null 2>&1 || true; \
+				git commit -C $$C --no-edit >/dev/null 2>&1 || true; \
+				git commit --amend -m "$$(git log -1 --format=%B $$C)" -m "(cherry picked from commit $$C)" >/dev/null 2>&1 || true; \
+			fi; \
+		done; \
+		git checkout dev; \
+		if [ $$SUCCESS -eq 1 ]; then \
+			echo "==> Sincronização concluída com sucesso! Retornado para a branch dev."; \
+		else \
+			echo "==> Erro durante a sincronização. Verifique o status da main."; exit 1; \
+		fi; \
 	fi
 
 # Envia a branch main limpa para o GitHub
