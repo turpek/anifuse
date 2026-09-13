@@ -117,7 +117,7 @@ src/anifuse/
 - **Branch `dev` (Ambiente de Trabalho Ativo):** Contém todo o repositório rastreado (`GEMINI.md`, `docs/`, `planos/`, código e testes) para sincronização perfeita entre múltiplos computadores.
   - Enviar alterações de dev: `make push-dev` (ou `git push origin dev`).
   - Puxar no outro computador: `make pull-dev` (ou `git pull origin dev`).
-- **Branch `main` (Produção e Distribuição Limpa):** Mantém estritamente os arquivos essenciais de código, testes, `README.md` e build, com histórico semântico gerado automaticamente pelo Makefile.
+- **Branch `main` (Produção e Distribuição Limpa):** Mantém estritamente os arquivos essenciais de código, testes, `README.md` e build, com histórico semântico atômico (cherry-pick de cada commit de produção) gerado automaticamente pelo Makefile.
   - Sincronizar código limpo para a main: `make sync-main`.
   - Publicar a main no GitHub: `make push-main`.
 - **Atualizar o Motor `anicrop`:**
