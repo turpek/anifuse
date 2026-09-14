@@ -205,7 +205,7 @@ def test_border_cut_rotated_frame_cuts_tilted_seam():
     top.transform.rotate(5)
     top.transform.translate(20, 0)
 
-    effect = RotatedBorderCutEffect(size=4)
+    effect = RotatedBorderCutEffect(all=4)
     apply_effects(top, bottom, [effect])
     result = flatten([bottom, top])
     arr = result.edits[0].image[...]
@@ -222,7 +222,7 @@ def test_border_cut_rotated_frame_with_scale():
     top.transform.rotate(5)
     top.transform.translate(10, 0)
 
-    effect = RotatedBorderCutEffect(size=5)
+    effect = RotatedBorderCutEffect(all=5)
     apply_effects(top, bottom, [effect])
     result = flatten([bottom, top])
     arr = result.edits[0].image[...]
@@ -238,7 +238,7 @@ def test_border_cut_pure_scale_applies_cut():
     top.transform.scale(1.1, 1.1)
     top.transform.translate(10, 0)
 
-    effect = RotatedBorderCutEffect(size=5)
+    effect = RotatedBorderCutEffect(all=5)
     apply_effects(top, bottom, [effect])
     result = flatten([bottom, top])
     arr = result.edits[0].image[...]
@@ -256,7 +256,7 @@ def test_border_cut_preserves_alpha_when_bottom_is_rotated():
     top = Layer(Image(np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
     top.transform.translate(30, 0)
 
-    effect = RotatedBorderCutEffect(size=5)
+    effect = RotatedBorderCutEffect(all=5)
     apply_effects(top, bottom, [effect])
     result = flatten([bottom, top])
     arr = result.edits[0].image[...]
@@ -275,7 +275,7 @@ def test_border_cut_preserves_alpha_when_both_are_rotated():
     top = Layer(Image(np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
     top.transform.rotate(5).translate(30, 0)
 
-    effect = RotatedBorderCutEffect(size=5)
+    effect = RotatedBorderCutEffect(all=5)
     apply_effects(top, bottom, [effect])
     result = flatten([bottom, top])
     arr = result.edits[0].image[...]
@@ -290,10 +290,79 @@ def test_border_cut_cuts_straight_edge_when_bottom_is_rotated():
     bottom.transform.rotate(15).translate(0, 50)
     top = Layer(Image(np.full((100, 100, 4), [0, 255, 0, 255], dtype=np.uint8), ImageFormat.RGBA))
 
-    effect = RotatedBorderCutEffect(size=5)
+    effect = RotatedBorderCutEffect(all=5)
     apply_effects(top, bottom, [effect])
     result = flatten([bottom, top])
     arr = result.edits[0].image[...]
     revealed_bottom = np.count_nonzero((arr[:, :, 0] == 255) & (arr[:, :, 1] == 0))
 
     assert revealed_bottom > 0
+
+
+def test_rotated_border_cut_selective_left_side():
+    """Verify that selective left cut erodes only the left seam overlapping the base layer."""
+    bottom = _create_solid_layer((255, 0, 0, 255), x=0, y=0)
+    top = _create_solid_layer((0, 255, 0, 255), x=20, y=0)
+
+    effect = RotatedBorderCutEffect(left=5)
+    apply_effects(top, bottom, [effect])
+    result = flatten([bottom, top])
+    arr = result.edits[0].image[...]
+    revealed_bottom = np.count_nonzero((arr[:, :, 0] == 255) & (arr[:, :, 1] == 0))
+
+    assert revealed_bottom == 2500
+
+
+def test_rotated_border_cut_non_overlapping_side_untouched():
+    """Verify that selecting a border side not overlapping the base layer produces zero cut."""
+    bottom = _create_solid_layer((255, 0, 0, 255), x=0, y=0)
+    top = _create_solid_layer((0, 255, 0, 255), x=20, y=0)
+
+    effect = RotatedBorderCutEffect(right=5)
+    apply_effects(top, bottom, [effect])
+    result = flatten([bottom, top])
+    arr = result.edits[0].image[...]
+    revealed_bottom = np.count_nonzero((arr[:, :, 0] == 255) & (arr[:, :, 1] == 0))
+
+    assert revealed_bottom == 2000
+
+
+def test_rotated_border_cut_selective_vertical_top_side():
+    """Verify that selective top cut erodes only the top seam in vertical translation."""
+    bottom = _create_solid_layer((255, 0, 0, 255), x=0, y=0)
+    top = _create_solid_layer((0, 255, 0, 255), x=0, y=20)
+
+    effect = RotatedBorderCutEffect(top=5)
+    apply_effects(top, bottom, [effect])
+    result = flatten([bottom, top])
+    arr = result.edits[0].image[...]
+    revealed_bottom = np.count_nonzero((arr[:, :, 0] == 255) & (arr[:, :, 1] == 0))
+
+    assert revealed_bottom == 2500
+
+
+def test_linear_border_cut_non_overlapping_side_untouched():
+    """Verify that LinearBorderCutEffect produces zero cut on a non-overlapping border side."""
+    bottom = _create_solid_layer((255, 0, 0, 255), x=0, y=0)
+    top = _create_solid_layer((0, 255, 0, 255), x=20, y=0)
+
+    effect = LinearBorderCutEffect(right=10)
+    effect.update(top, bottom)
+    rendered_image = effect.apply(top.edits[0].image, np.eye(3))
+    arr = rendered_image[...]
+
+    assert np.count_nonzero(arr[:, :, 3] == 0) == 0
+
+
+def test_linear_border_cut_manual_side_preserves_cut_on_zero_delta():
+    """Verify that manual top side cut is preserved when horizontal delta is active."""
+    bottom = _create_solid_layer((255, 0, 0, 255), x=0, y=0)
+    top = _create_solid_layer((0, 255, 0, 255), x=20, y=0)
+
+    effect = LinearBorderCutEffect(top=5)
+    effect.update(top, bottom)
+    rendered_image = effect.apply(top.edits[0].image, np.eye(3))
+    arr = rendered_image[...]
+
+    assert np.all(arr[0:5, 0:80, 3] == 0)
+    assert np.all(arr[5:100, 0:80, 3] == 255)
