@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 import cv2
 import numpy as np
 from anicrop import ImageFormat, Region, ScratchBuffer
-from anicrop.composition import flatten
 
 from anifuse.interfaces.effect import AnifuseEffect, LayerTarget
 
@@ -20,7 +19,7 @@ if TYPE_CHECKING:
 class RotatedBorderCutEffect(AnifuseEffect):
     """Cuts border seams on rotated or scaled layers using morphological erosion with anicrop ScratchBuffer."""
 
-    target: LayerTarget = LayerTarget.TOP
+    target: LayerTarget = LayerTarget.BOTH
 
     _scratch_buf: ScratchBuffer = ScratchBuffer()
     _scratch_eroded: ScratchBuffer = ScratchBuffer()
@@ -65,10 +64,11 @@ class RotatedBorderCutEffect(AnifuseEffect):
 
         self.min_alpha = min_alpha
         self._counter: int = 0
+        self._top_image: Image | None = None
         self._buf_size: tuple[int, int] | None = None
         self._sl_buf: tuple[slice, slice] | None = None
         self._sl_top: tuple[slice, slice] | None = None
-        self._bot_mask: np.ndarray | None = None
+        self._sl_bot: tuple[slice, slice] | None = None
 
     def get_padding(self) -> tuple[int, int, int, int]:
         """Return zero padding as border cutting does not expand bounds."""
@@ -79,11 +79,12 @@ class RotatedBorderCutEffect(AnifuseEffect):
         return None
 
     def update(self, top: Layer, bottom: Layer) -> None:
-        """Pre-calculate expanded overlap, zero-padded buffer slices, and bottom opacity mask."""
+        """Pre-calculate expanded overlap and zero-padded buffer slices without rasterizing bottom."""
         self._counter = 0
+        self._top_image = None
         max_cut = max(self._shrink.values())
         if not top.global_region.overlaps(bottom.global_region) or max_cut <= 0:
-            self._counter = 1
+            self._counter = 2
             return
 
         overlap = top.global_region & bottom.global_region
@@ -98,37 +99,13 @@ class RotatedBorderCutEffect(AnifuseEffect):
 
         w, h = expanded_bot.size.to_int()
         if w <= 0 or h <= 0 or top_in_exp.area <= 0:
-            self._counter = 1
-            return
-
-        sl_buf = expanded_bot.overlap_with(top_in_exp).to_slice()
-        sl_top = top.global_region.overlap_with(top_in_exp).to_slice()
-
-        has_rot = (
-            abs(bottom.transform.matrix[0, 1]) > 1e-4
-            or abs(bottom.transform.matrix[1, 0]) > 1e-4
-        )
-        if has_rot:
-            rendered = flatten([bottom])
-            b_img = rendered.edits[0].image
-            b_sy, b_sx = rendered.global_region.overlap_with(top_in_exp).to_slice()
-            b_arr = b_img[...]
-            bot_alpha = b_arr[b_sy, b_sx, 3]
-        else:
-            b_arr = bottom.edits[0].image[...]
-            b_sy, b_sx = bottom.global_region.overlap_with(top_in_exp).to_slice()
-            bot_alpha = b_arr[b_sy, b_sx, 3]
-
-        h_clip = sl_top[0].stop - sl_top[0].start
-        w_clip = sl_top[1].stop - sl_top[1].start
-        if h_clip <= 0 or w_clip <= 0:
-            self._counter = 1
+            self._counter = 2
             return
 
         self._buf_size = (w, h)
-        self._sl_buf = sl_buf
-        self._sl_top = sl_top
-        self._bot_mask = bot_alpha[:h_clip, :w_clip] >= self.min_alpha
+        self._sl_buf = expanded_bot.overlap_with(top_in_exp).to_slice()
+        self._sl_top = top.global_region.overlap_with(top_in_exp).to_slice()
+        self._sl_bot = bottom.global_region.overlap_with(top_in_exp).to_slice()
 
     @staticmethod
     def _get_buffer(scratch: ScratchBuffer, w: int, h: int) -> np.ndarray:
@@ -137,60 +114,75 @@ class RotatedBorderCutEffect(AnifuseEffect):
         return scratch[Region.from_size(w, h)][..., 0]
 
     def apply(self, image: Image, matrix: np.ndarray) -> Image:
-        """Sample alpha across layers and cut seam on top layer using erosion on expanded zero-padded buffer."""
+        """Sample alpha across layers and cut seam on top layer in two-pass traversal."""
         if self._counter == 0:
-            assert self._buf_size is not None
-            assert self._sl_buf is not None
-            assert self._sl_top is not None
-            assert self._bot_mask is not None
+            self._top_image = image
+            self._counter += 1
+            return image
 
-            w_buf, h_buf = self._buf_size
-            buf = self._get_buffer(self._scratch_buf, w_buf, h_buf)
-            buf.fill(0)
+        if self._counter == 1:
+            if self._top_image is not None and self._buf_size is not None:
+                assert self._sl_buf is not None
+                assert self._sl_top is not None
+                assert self._sl_bot is not None
 
-            top_arr = image[...]
-            sl_buf_y, sl_buf_x = self._sl_buf
-            sl_top_y, sl_top_x = self._sl_top
+                w_buf, h_buf = self._buf_size
+                buf = self._get_buffer(self._scratch_buf, w_buf, h_buf)
+                buf.fill(0)
 
-            buf[sl_buf_y, sl_buf_x] = top_arr[sl_top_y, sl_top_x, 3]
+                top_arr = self._top_image[...]
+                sl_buf_y, sl_buf_x = self._sl_buf
+                sl_top_y, sl_top_x = self._sl_top
+                sl_bot_y, sl_bot_x = self._sl_bot
 
-            buf_eroded = self._get_buffer(self._scratch_eroded, w_buf, h_buf)
+                buf[sl_buf_y, sl_buf_x] = top_arr[sl_top_y, sl_top_x, 3]
 
-            left = self._shrink["left"]
-            right = self._shrink["right"]
-            top_cut = self._shrink["top"]
-            bot_cut = self._shrink["bottom"]
+                buf_eroded = self._get_buffer(self._scratch_eroded, w_buf, h_buf)
 
-            if left == right == top_cut == bot_cut:
-                kernel = cv2.getStructuringElement(
-                    cv2.MORPH_RECT, (2 * left + 1, 2 * left + 1)
-                )
-                cv2.erode(buf, kernel, dst=buf_eroded)
-            else:
-                buf_eroded[...] = buf[...]
-                if left > 0:
-                    k_left = np.ones((1, left + 1), dtype=np.uint8)
-                    eroded_l = cv2.erode(buf, k_left, anchor=(left, 0))
-                    np.minimum(buf_eroded, eroded_l, out=buf_eroded)
-                if right > 0:
-                    k_right = np.ones((1, right + 1), dtype=np.uint8)
-                    eroded_r = cv2.erode(buf, k_right, anchor=(0, 0))
-                    np.minimum(buf_eroded, eroded_r, out=buf_eroded)
-                if top_cut > 0:
-                    k_top = np.ones((top_cut + 1, 1), dtype=np.uint8)
-                    eroded_t = cv2.erode(buf, k_top, anchor=(0, top_cut))
-                    np.minimum(buf_eroded, eroded_t, out=buf_eroded)
-                if bot_cut > 0:
-                    k_bot = np.ones((bot_cut + 1, 1), dtype=np.uint8)
-                    eroded_b = cv2.erode(buf, k_bot, anchor=(0, 0))
-                    np.minimum(buf_eroded, eroded_b, out=buf_eroded)
+                left = self._shrink["left"]
+                right = self._shrink["right"]
+                top_cut = self._shrink["top"]
+                bot_cut = self._shrink["bottom"]
 
-            buf_top_orig = buf[sl_buf_y, sl_buf_x]
-            buf_top_eroded = buf_eroded[sl_buf_y, sl_buf_x]
-            cut_mask = buf_top_orig > buf_top_eroded
+                if left == right == top_cut == bot_cut:
+                    kernel = cv2.getStructuringElement(
+                        cv2.MORPH_RECT, (2 * left + 1, 2 * left + 1)
+                    )
+                    cv2.erode(buf, kernel, dst=buf_eroded)
+                else:
+                    buf_eroded[...] = buf[...]
+                    if left > 0:
+                        k_left = np.ones((1, left + 1), dtype=np.uint8)
+                        eroded_l = cv2.erode(buf, k_left, anchor=(left, 0))
+                        np.minimum(buf_eroded, eroded_l, out=buf_eroded)
+                    if right > 0:
+                        k_right = np.ones((1, right + 1), dtype=np.uint8)
+                        eroded_r = cv2.erode(buf, k_right, anchor=(0, 0))
+                        np.minimum(buf_eroded, eroded_r, out=buf_eroded)
+                    if top_cut > 0:
+                        k_top = np.ones((top_cut + 1, 1), dtype=np.uint8)
+                        eroded_t = cv2.erode(buf, k_top, anchor=(0, top_cut))
+                        np.minimum(buf_eroded, eroded_t, out=buf_eroded)
+                    if bot_cut > 0:
+                        k_bot = np.ones((bot_cut + 1, 1), dtype=np.uint8)
+                        eroded_b = cv2.erode(buf, k_bot, anchor=(0, 0))
+                        np.minimum(buf_eroded, eroded_b, out=buf_eroded)
 
-            cut = cut_mask & self._bot_mask
-            top_arr[sl_top_y, sl_top_x, 3][cut] = 0
+                buf_top_orig = buf[sl_buf_y, sl_buf_x]
+                buf_top_eroded = buf_eroded[sl_buf_y, sl_buf_x]
+                cut_mask = buf_top_orig > buf_top_eroded
 
-        self._counter += 1
+                bot_arr = image[...]
+                h_clip = sl_top_y.stop - sl_top_y.start
+                w_clip = sl_top_x.stop - sl_top_x.start
+                bot_alpha = bot_arr[sl_bot_y, sl_bot_x, 3][:h_clip, :w_clip]
+                bot_mask = bot_alpha >= self.min_alpha
+
+                cut = cut_mask & bot_mask
+                top_arr[sl_top_y, sl_top_x, 3][cut] = 0
+                self._top_image = None
+
+            self._counter += 1
+            return image
+
         return image
