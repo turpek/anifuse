@@ -201,10 +201,12 @@ O `anifuse` consome o motor gráfico `anicrop`. Sempre que precisar consultar m�
   - Usa contador interno que zera em `update()` para garantir aplicação única por frame em `apply()`.
 - **`RotatedBorderCutEffect` (Rotações, Zoom e Afim Geral):**
   - Alvo fixo na camada do topo (`LayerTarget.TOP`).
-  - Em quadros rotacionados, emendas oblíquas e cantos salientes são eliminados via erosão morfológica (`cv2.erode`) do canal alfa da camada de topo, restrita estritamente à máscara opaca da base na área de sobreposição.
-  - Alocação zero-copy via reaproveitamento de `anicrop.ScratchBuffer` nativo (`_scratch_eroded` e `_scratch_diff`).
-  - Elimina completamente pontas/dentes residuais nas quinas da sobreposição.
-- **Despacho Automático na CLI:** A CLI (`anifuse dir` / `anifuse dirs`) despacha automaticamente `RotatedBorderCutEffect(size=cut_size)` quando `--motion-mode` for rotação, escala ou afim; e `LinearBorderCutEffect(...)` para translação.
+  - Assinatura padronizada: aceita `(all, *, left=0, right=0, top=0, bottom=0)`.
+  - Em quadros rotacionados ou com escala, emendas oblíquas e cantos salientes são eliminados via erosão morfológica (`cv2.erode`) do canal alfa da camada de topo, restrita estritamente à máscara opaca da base na área de sobreposição (`expanded = overlap.expand(...) & bottom.global_region`).
+  - Suporta seleção seletiva de bordas via erosões direcionais assimétricas com âncoras dedicadas e `np.minimum`.
+  - Alocação zero-copy via reaproveitamento de `anicrop.ScratchBuffer` nativo (`_scratch_buf` e `_scratch_eroded`).
+  - Elimina completamente pontas/dentes residuais nas quinas da sobreposição e impede cortes em bordas fora da área sobreposta.
+- **Despacho Automático na CLI:** A CLI (`anifuse dir` / `anifuse dirs`) despacha `RotatedBorderCutEffect(all=border_cut, left=..., right=..., top=..., bottom=...)` quando `--motion-mode` for rotação, escala ou afim; e `LinearBorderCutEffect(...)` para translação.
 
 ---
 
