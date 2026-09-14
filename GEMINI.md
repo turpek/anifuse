@@ -200,8 +200,9 @@ O `anifuse` consome o motor gráfico `anicrop`. Sempre que precisar consultar m�
   - Confinamento estrito à sobreposição: se o corte esvaziar a sobreposição, limpa todo o overlap de forma segura.
   - Usa contador interno que zera em `update()` para garantir aplicação única por frame em `apply()`.
 - **`RotatedBorderCutEffect` (Rotações, Zoom e Afim Geral):**
-  - Alvo fixo na camada do topo (`LayerTarget.TOP`).
+  - Alvo na composição: `LayerTarget.BOTH`.
   - Assinatura padronizada: aceita `(all, *, left=0, right=0, top=0, bottom=0)`.
+  - **Dois passos no `apply` (zero `flatten` redundante):** Na passada 0 (`_counter == 0`, camada do topo), retém a referência da `Image` já transformada pelo renderizador do `anicrop`; na passada 1 (`_counter == 1`, base), consome `bot_alpha` diretamente da `Image` rasterizada da base e corta a emenda no topo sem alocar imagens temporárias.
   - Em quadros rotacionados ou com escala, emendas oblíquas e cantos salientes são eliminados via erosão morfológica (`cv2.erode`) do canal alfa da camada de topo, restrita estritamente à máscara opaca da base na área de sobreposição (`expanded = overlap.expand(...) & bottom.global_region`).
   - Suporta seleção seletiva de bordas via erosões direcionais assimétricas com âncoras dedicadas e `np.minimum`.
   - Alocação zero-copy via reaproveitamento de `anicrop.ScratchBuffer` nativo (`_scratch_buf` e `_scratch_eroded`).
