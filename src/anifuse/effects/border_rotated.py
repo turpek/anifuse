@@ -5,13 +5,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import cv2
+import numpy as np
 from anicrop import ImageFormat, Region, ScratchBuffer
 from anicrop.composition import flatten
 
 from anifuse.interfaces.effect import AnifuseEffect, LayerTarget
 
 if TYPE_CHECKING:
-    import numpy as np
     from anicrop.effect import Effect
     from anicrop.image import Image
     from anicrop.layer import Layer
@@ -27,22 +27,42 @@ class RotatedBorderCutEffect(AnifuseEffect):
 
     def __init__(
         self,
-        size: int = 15,
+        all: int | None = None,
         *,
+        left: int = 0,
+        right: int = 0,
+        top: int = 0,
+        bottom: int = 0,
         min_alpha: int = 250,
         visible: bool = True,
         name: str = "RotatedBorderCut",
     ) -> None:
-        """Initialize rotated border cut effect.
+        """Initialize rotated border cut effect with per-side thicknesses or uniform margin.
 
         Args:
-            size: Border cut thickness in pixels.
+            all: Optional uniform cut thickness applied to all sides.
+            left: Cut thickness in pixels for the left edge.
+            right: Cut thickness in pixels for the right edge.
+            top: Cut thickness in pixels for the top edge.
+            bottom: Cut thickness in pixels for the bottom edge.
             min_alpha: Minimum opacity threshold for underlying bottom layer.
             visible: Whether the effect is active in the render pipeline.
             name: Human-readable identifier for the effect.
         """
         super().__init__(visible=visible, name=name)
-        self.size = size
+        self._all = all
+        self._shrink = {
+            "left": left,
+            "right": right,
+            "top": top,
+            "bottom": bottom,
+        }
+        if all is not None:
+            self._shrink = {k: all for k in self._shrink}
+        elif not any((left, right, top, bottom)):
+            self._all = 15
+            self._shrink = {k: 15 for k in self._shrink}
+
         self.min_alpha = min_alpha
         self._counter: int = 0
         self._buf_size: tuple[int, int] | None = None
@@ -61,12 +81,18 @@ class RotatedBorderCutEffect(AnifuseEffect):
     def update(self, top: Layer, bottom: Layer) -> None:
         """Pre-calculate expanded overlap, zero-padded buffer slices, and bottom opacity mask."""
         self._counter = 0
-        if not top.global_region.overlaps(bottom.global_region) or self.size <= 0:
+        max_cut = max(self._shrink.values())
+        if not top.global_region.overlaps(bottom.global_region) or max_cut <= 0:
             self._counter = 1
             return
 
         overlap = top.global_region & bottom.global_region
-        expanded = overlap.expand(all=self.size)
+        expanded = overlap.expand(
+            left=self._shrink["left"],
+            right=self._shrink["right"],
+            top=self._shrink["top"],
+            bottom=self._shrink["bottom"],
+        )
         expanded_bot = expanded & bottom.global_region
         top_in_exp = top.global_region & expanded_bot
 
@@ -129,10 +155,35 @@ class RotatedBorderCutEffect(AnifuseEffect):
             buf[sl_buf_y, sl_buf_x] = top_arr[sl_top_y, sl_top_x, 3]
 
             buf_eroded = self._get_buffer(self._scratch_eroded, w_buf, h_buf)
-            kernel = cv2.getStructuringElement(
-                cv2.MORPH_RECT, (2 * self.size + 1, 2 * self.size + 1)
-            )
-            cv2.erode(buf, kernel, dst=buf_eroded)
+
+            left = self._shrink["left"]
+            right = self._shrink["right"]
+            top_cut = self._shrink["top"]
+            bot_cut = self._shrink["bottom"]
+
+            if left == right == top_cut == bot_cut:
+                kernel = cv2.getStructuringElement(
+                    cv2.MORPH_RECT, (2 * left + 1, 2 * left + 1)
+                )
+                cv2.erode(buf, kernel, dst=buf_eroded)
+            else:
+                buf_eroded[...] = buf[...]
+                if left > 0:
+                    k_left = np.ones((1, left + 1), dtype=np.uint8)
+                    eroded_l = cv2.erode(buf, k_left, anchor=(left, 0))
+                    np.minimum(buf_eroded, eroded_l, out=buf_eroded)
+                if right > 0:
+                    k_right = np.ones((1, right + 1), dtype=np.uint8)
+                    eroded_r = cv2.erode(buf, k_right, anchor=(0, 0))
+                    np.minimum(buf_eroded, eroded_r, out=buf_eroded)
+                if top_cut > 0:
+                    k_top = np.ones((top_cut + 1, 1), dtype=np.uint8)
+                    eroded_t = cv2.erode(buf, k_top, anchor=(0, top_cut))
+                    np.minimum(buf_eroded, eroded_t, out=buf_eroded)
+                if bot_cut > 0:
+                    k_bot = np.ones((bot_cut + 1, 1), dtype=np.uint8)
+                    eroded_b = cv2.erode(buf, k_bot, anchor=(0, 0))
+                    np.minimum(buf_eroded, eroded_b, out=buf_eroded)
 
             buf_top_orig = buf[sl_buf_y, sl_buf_x]
             buf_top_eroded = buf_eroded[sl_buf_y, sl_buf_x]

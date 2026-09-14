@@ -242,10 +242,15 @@ def _process_dir_stitch(
     )
     if border_cut is not None or has_custom:
         if motion_mode in ("rotation", "scale", "affine", "transform"):
-            cut_size = border_cut if border_cut is not None else max(
-                border_cut_left, border_cut_right, border_cut_top, border_cut_bottom
+            effects.append(
+                RotatedBorderCutEffect(
+                    all=border_cut,
+                    left=border_cut_left,
+                    right=border_cut_right,
+                    top=border_cut_top,
+                    bottom=border_cut_bottom,
+                )
             )
-            effects.append(RotatedBorderCutEffect(size=cut_size))
         else:
             effects.append(
                 LinearBorderCutEffect(

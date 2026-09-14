@@ -265,3 +265,33 @@ def test_cli_dir_with_rotated_border_cut_stitches(
 
     assert result.exit_code == 0
     assert (out_dir / "scene_01_top2.png").exists()
+
+
+def test_cli_dir_with_rotated_custom_border_cut_sides(
+    synthetic_scene_dirs: tuple[Path, Path],
+    tmp_path: Path,
+):
+    """Verify that dir command stitches frames with selective border cut sides on rotation motion mode."""
+    dir1, _ = synthetic_scene_dirs
+    out_dir = tmp_path / "output_rot_sides"
+    result = runner.invoke(
+        app,
+        [
+            "dir",
+            "-s",
+            "0",
+            "-n",
+            "2",
+            "-o",
+            str(out_dir),
+            "--motion-mode",
+            "rotation",
+            "--border-cut-left",
+            "5",
+            "--quiet",
+            str(dir1),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (out_dir / "scene_01_top2.png").exists()

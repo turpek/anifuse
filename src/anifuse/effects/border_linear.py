@@ -75,10 +75,11 @@ class LinearBorderCutEffect(AnifuseEffect):
         dx, dy = (top.global_region - bottom.global_region).top_left
 
         shrink = self._shrink.copy()
-        if dy == 0:
-            shrink["top"] = shrink["bottom"] = 0
-        if dx == 0:
-            shrink["left"] = shrink["right"] = 0
+        if self._all is not None:
+            if dy == 0:
+                shrink["top"] = shrink["bottom"] = 0
+            if dx == 0:
+                shrink["left"] = shrink["right"] = 0
 
         overlap_global = top.global_region & bottom.global_region
         self._local_view = top.global_region.overlap_with(overlap_global)
