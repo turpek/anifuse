@@ -207,7 +207,30 @@ O `anifuse` consome o motor gráfico `anicrop`. Sempre que precisar consultar m�
   - Suporta seleção seletiva de bordas via erosões direcionais assimétricas com âncoras dedicadas e `np.minimum`.
   - Alocação zero-copy via reaproveitamento de `anicrop.ScratchBuffer` nativo (`_scratch_buf` e `_scratch_eroded`).
   - Elimina completamente pontas/dentes residuais nas quinas da sobreposição e impede cortes em bordas fora da área sobreposta.
-- **Despacho Automático na CLI:** A CLI (`anifuse dir` / `anifuse dirs`) despacha `RotatedBorderCutEffect(all=border_cut, left=..., right=..., top=..., bottom=...)` quando `--motion-mode` for rotação, escala ou afim; e `LinearBorderCutEffect(...)` para translação.
+- **Despacho Automático na CLI:** A CLI despacha `RotatedBorderCutEffect(all=border_cut, left=..., right=..., top=..., bottom=...)` quando `--motion-mode` for rotação, escala ou afim; e `LinearBorderCutEffect(...)` para translação.
+
+### 8.6. Arquitetura Modular da CLI (Padrões Factory, Strategy e Multi-Command Chaining)
+- **Separação Estrita em Domínios (`models.py`):**
+  - `MotionConfig`: Modos (`affine`, `translation`, `scale`, `rotation`), direção e limiares ORB.
+  - `CompositionConfig`: Ordem de camadas (`StackOrder.BOTH` como default), blend mode (`hard-masking`), interpolação e seções.
+  - `EffectsConfig`: Configuração uniforme e por lado de corte de borda na sobreposição.
+  - `OutputConfig`: Destino, templates de arquivo, sobrescrita e controle de verbosidade.
+  - `SourceConfig`: Origem (`dir`, `image`, `video`), fatiamento e amostragem temporal.
+  - `StitchJob`: Agregação atômica e imutável dos 5 domínios em uma unidade executável.
+- **Fábricas Declarativas (`cli/factories/`):**
+  - `EstimatorFactory`: Utiliza `ESTIMATOR_MAP` e desempacotamento dinâmico via `inspect.signature`, eliminando código condicional redundante.
+  - `HandlerFactory`: Utiliza `HANDLER_RECIPES` para construir a cadeia exata de transformadores conforme o modo geométrico.
+  - `EffectFactory`: Utiliza `EFFECT_MAP` despachando o efeito adequado (`Linear` vs `Rotated`).
+  - `ReaderFactory`: Constrói leitores para diretórios e imagens explícitas com a estratégia de I/O configurada (`stream` ou `batched`).
+  - `StitcherFactory`: Monta o `SceneStitcher` completo a partir do `StitchJob`.
+- **Execução Desacoplada (`cli/runner.py`):**
+  - `JobRunner`: Orquestra validação de frames, gerenciamento de feedback visual do Rich e gravação das imagens de saída (`resolve_output_path`).
+  - **Correção de Progresso (Off-by-One):** O laço de costura no `SceneStitcher` utiliza `enumerate(..., start=2)` para que a contagem de frames integrados atinja 100% reais (ex: `71/71`).
+- **Encadeamento em Lote no Mesmo Processo (`BatchTyperGroup`):**
+  - O grupo oficial do Typer particiona a linha de comando no delimitador `stitch` e executa múltiplos trabalhos sequencialmente sem reiniciar o interpretador Python nem recarregar dependências pesadas (`opencv`, `numpy`, `anicrop`).
+- **Árvore Definitiva de Comandos:**
+  - `anifuse stitch dir [opções-fonte] <pastas...>`
+  - `anifuse stitch image [opções-fonte] <arquivos...>`
 
 ---
 
