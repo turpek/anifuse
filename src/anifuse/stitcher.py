@@ -118,7 +118,7 @@ class SceneStitcher(Stitcher):
         )
         last_region: Region = initial_layer.global_region
 
-        for frame in frame_iter:
+        for step, frame in enumerate(frame_iter, start=2):
             sections = sections_cls(
                 accumulator.reference_layer.global_region, last_region
             )
@@ -145,6 +145,6 @@ class SceneStitcher(Stitcher):
             last_region = layer2.global_region
 
             if self.on_progress is not None:
-                self.on_progress(frame.idx, total_frames, alignment)
+                self.on_progress(step, total_frames, alignment)
 
         return accumulator.result()
