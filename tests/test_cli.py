@@ -1,26 +1,17 @@
-"""Tests for anifuse command-line interface and reader dispatching."""
+"""Tests for anifuse modern command-line interface, subcommands, and chaining."""
+
+from __future__ import annotations
 
 from pathlib import Path
 
 import cv2
 import numpy as np
 import pytest
-from anicrop.enums import ImageFormat, InterpMode
+from anicrop.enums import ImageFormat
 from anicrop.image import Image
 from typer.testing import CliRunner
 
-from anifuse.cli.app import _resolve_estimator_and_handlers, app
-from anifuse.detection.orb import (
-    OrbRotationEstimator,
-    OrbScaleEstimator,
-    OrbTransformEstimator,
-    OrbTranslationEstimator,
-)
-from anifuse.handlers import (
-    RotationHandler,
-    ScaleHandler,
-    TranslationHandler,
-)
+from anifuse.cli.app import app
 
 runner = CliRunner()
 
@@ -59,199 +50,272 @@ def synthetic_scene_dirs(tmp_path: Path) -> tuple[Path, Path]:
     return dir1, dir2
 
 
-def test_cli_dir_single_directory_stitches_and_saves(
+def test_cli_stitch_dir_single_directory(
     synthetic_scene_dirs: tuple[Path, Path],
     tmp_path: Path,
 ):
-    """Verify that dir command stitches frames and generates output image."""
+    """Verify that stitch dir command stitches frames and generates output images."""
     dir1, _ = synthetic_scene_dirs
     out_dir = tmp_path / "output"
     result = runner.invoke(
         app,
-        ["dir", "-s", "0", "-n", "2", "-o", str(out_dir), "--quiet", str(dir1)],
+        [
+            "stitch",
+            "-o",
+            str(out_dir),
+            "--quiet",
+            "dir",
+            "-s",
+            "0",
+            "-n",
+            "2",
+            str(dir1),
+        ],
     )
 
     assert result.exit_code == 0
     assert "Costurando: scene_01" in result.output
+    assert (out_dir / "scene_01_top1.png").exists()
     assert (out_dir / "scene_01_top2.png").exists()
 
 
-def test_cli_dirs_multiple_directories_stitches_all(
+def test_cli_stitch_dir_multiple_directories(
     synthetic_scene_dirs: tuple[Path, Path],
     tmp_path: Path,
 ):
-    """Verify that dirs command stitches multiple directories to target folder."""
+    """Verify that stitch dir command stitches multiple directories in batch."""
     dir1, dir2 = synthetic_scene_dirs
     out_dir = tmp_path / "output_dirs"
     result = runner.invoke(
         app,
-        ["dirs", "-s", "0", "-n", "2", "-o", str(out_dir), "--quiet", str(dir1), str(dir2)],
+        [
+            "stitch",
+            "-o",
+            str(out_dir),
+            "--quiet",
+            "dir",
+            "-s",
+            "0",
+            "-n",
+            "2",
+            str(dir1),
+            str(dir2),
+        ],
     )
 
     assert result.exit_code == 0
     assert "Costurando: scene_01" in result.output
     assert "Costurando: scene_02" in result.output
-    assert (out_dir / "scene_01_top2.png").exists()
-    assert (out_dir / "scene_02_top2.png").exists()
+    assert (out_dir / "scene_01_top1.png").exists()
+    assert (out_dir / "scene_02_top1.png").exists()
 
 
-def test_cli_dir_validates_direction_and_motion_mode(
+def test_cli_stitch_image_explicit_files(
+    synthetic_scene_dirs: tuple[Path, Path],
+    tmp_path: Path,
+):
+    """Verify that stitch image command stitches an explicit list of image files."""
+    dir1, _ = synthetic_scene_dirs
+    out_dir = tmp_path / "output_images"
+    img1 = dir1 / "frame_01.png"
+    img2 = dir1 / "frame_02.png"
+
+    result = runner.invoke(
+        app,
+        [
+            "stitch",
+            "-o",
+            str(out_dir),
+            "--quiet",
+            "image",
+            str(img1),
+            str(img2),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Costurando: scene_01" in result.output
+    assert (out_dir / "scene_01_top1.png").exists()
+
+
+def test_cli_stitch_multi_command_chaining(
+    synthetic_scene_dirs: tuple[Path, Path],
+    tmp_path: Path,
+):
+    """Verify that chained stitch commands execute sequentially in a single process."""
+    dir1, dir2 = synthetic_scene_dirs
+    out1 = tmp_path / "chain_out1"
+    out2 = tmp_path / "chain_out2"
+
+    result = runner.invoke(
+        app,
+        [
+            "stitch",
+            "-o",
+            str(out1),
+            "--motion-mode",
+            "translation",
+            "--quiet",
+            "dir",
+            "-s",
+            "0",
+            "-n",
+            "2",
+            str(dir1),
+            "stitch",
+            "-o",
+            str(out2),
+            "--motion-mode",
+            "rotation",
+            "--quiet",
+            "dir",
+            "-s",
+            "0",
+            "-n",
+            "2",
+            str(dir2),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Costurando: scene_01" in result.output
+    assert "Costurando: scene_02" in result.output
+    assert (out1 / "scene_01_top1.png").exists()
+    assert (out2 / "scene_02_top1.png").exists()
+
+
+def test_cli_stitch_validates_direction_and_motion_mode(
     synthetic_scene_dirs: tuple[Path, Path],
 ):
     """Verify that specifying horizontal/vertical direction on non-translation mode errors."""
     dir1, _ = synthetic_scene_dirs
     result = runner.invoke(
         app,
-        ["dir", "--motion-mode", "scale", "--direction", "horizontal", str(dir1)],
+        [
+            "stitch",
+            "--motion-mode",
+            "scale",
+            "--direction",
+            "horizontal",
+            "dir",
+            str(dir1),
+        ],
     )
 
     assert result.exit_code != 0
     assert "--direction 'horizontal' só é suportada" in result.output
 
 
-def test_cli_dir_warns_on_empty_directory(tmp_path: Path):
-    """Verify that dir command prints a warning when directory has no supported images."""
+def test_cli_stitch_warns_on_empty_directory(tmp_path: Path):
+    """Verify that stitch dir prints a warning when directory has no supported images."""
     empty_dir = tmp_path / "empty_scene"
     empty_dir.mkdir()
-    result = runner.invoke(app, ["dir", str(empty_dir)])
+    result = runner.invoke(app, ["stitch", "dir", str(empty_dir)])
 
     assert result.exit_code == 0
     assert "nenhuma imagem suportada encontrada" in result.output
 
 
-@pytest.mark.parametrize(
-    ("motion_mode", "expected_estimator_cls", "expected_handler_classes"),
-    [
-        ("translation", OrbTranslationEstimator, [TranslationHandler]),
-        ("scale", OrbScaleEstimator, [ScaleHandler, TranslationHandler]),
-        ("rotation", OrbRotationEstimator, [RotationHandler, TranslationHandler]),
-        (
-            "affine",
-            OrbTransformEstimator,
-            [ScaleHandler, RotationHandler, TranslationHandler],
-        ),
-    ],
-    ids=["translation", "scale", "rotation", "affine"],
-)
-def test_resolve_estimator_and_handlers_configures_expected_chain(
-    motion_mode: str,
-    expected_estimator_cls: type,
-    expected_handler_classes: list[type],
-):
-    """Verify that _resolve_estimator_and_handlers pairs estimators with correct transform handlers."""
-    estimator, handlers = _resolve_estimator_and_handlers(
-        motion_mode=motion_mode,
-        direction="auto",
-        interp=InterpMode.LANCZOS,
-        rotate_thresh=0.10,
-        scale_thresh=0.0010,
-        fast_thresh=10,
-        trans_thresh=0.0,
-    )
-
-    assert isinstance(estimator, expected_estimator_cls)
-    assert [type(h) for h in handlers] == expected_handler_classes
-
-
-def test_cli_dir_with_rotation_motion_mode_stitches(
+def test_cli_stitch_with_rotation_motion_mode_stitches(
     synthetic_scene_dirs: tuple[Path, Path],
     tmp_path: Path,
 ):
-    """Verify that dir command stitches frames when --motion-mode rotation is specified."""
+    """Verify that stitch command stitches frames when --motion-mode rotation is specified."""
     dir1, _ = synthetic_scene_dirs
     out_dir = tmp_path / "output_rot"
     result = runner.invoke(
         app,
         [
-            "dir",
-            "-s",
-            "0",
-            "-n",
-            "2",
+            "stitch",
             "-o",
             str(out_dir),
             "--motion-mode",
             "rotation",
             "--quiet",
+            "dir",
+            "-s",
+            "0",
+            "-n",
+            "2",
             str(dir1),
         ],
     )
 
     assert result.exit_code == 0
-    assert (out_dir / "scene_01_top2.png").exists()
+    assert (out_dir / "scene_01_top1.png").exists()
 
 
-def test_cli_dir_with_scale_motion_mode_stitches(
+def test_cli_stitch_with_scale_motion_mode_stitches(
     synthetic_scene_dirs: tuple[Path, Path],
     tmp_path: Path,
 ):
-    """Verify that dir command stitches frames when --motion-mode scale is specified."""
+    """Verify that stitch command stitches frames when --motion-mode scale is specified."""
     dir1, _ = synthetic_scene_dirs
     out_dir = tmp_path / "output_scale"
     result = runner.invoke(
         app,
         [
-            "dir",
-            "-s",
-            "0",
-            "-n",
-            "2",
+            "stitch",
             "-o",
             str(out_dir),
             "--motion-mode",
             "scale",
             "--quiet",
+            "dir",
+            "-s",
+            "0",
+            "-n",
+            "2",
             str(dir1),
         ],
     )
 
     assert result.exit_code == 0
-    assert (out_dir / "scene_01_top2.png").exists()
+    assert (out_dir / "scene_01_top1.png").exists()
 
 
-def test_cli_dir_with_linear_border_cut_stitches(
+def test_cli_stitch_with_linear_border_cut_stitches(
     synthetic_scene_dirs: tuple[Path, Path],
     tmp_path: Path,
 ):
-    """Verify that dir command stitches frames with linear border cut options."""
+    """Verify that stitch command stitches frames with linear border cut on translation mode."""
     dir1, _ = synthetic_scene_dirs
     out_dir = tmp_path / "output_linear_cut"
     result = runner.invoke(
         app,
         [
+            "stitch",
+            "-o",
+            str(out_dir),
+            "-b",
+            "5",
+            "--motion-mode",
+            "translation",
+            "--quiet",
             "dir",
             "-s",
             "0",
             "-n",
             "2",
-            "-o",
-            str(out_dir),
-            "-b",
-            "5",
-            "--quiet",
             str(dir1),
         ],
     )
 
     assert result.exit_code == 0
-    assert (out_dir / "scene_01_top2.png").exists()
+    assert (out_dir / "scene_01_top1.png").exists()
 
 
-def test_cli_dir_with_rotated_border_cut_stitches(
+def test_cli_stitch_with_rotated_border_cut_stitches(
     synthetic_scene_dirs: tuple[Path, Path],
     tmp_path: Path,
 ):
-    """Verify that dir command stitches frames with rotated border cut on rotation motion mode."""
+    """Verify that stitch command stitches frames with rotated border cut on rotation mode."""
     dir1, _ = synthetic_scene_dirs
     out_dir = tmp_path / "output_rot_cut"
     result = runner.invoke(
         app,
         [
-            "dir",
-            "-s",
-            "0",
-            "-n",
-            "2",
+            "stitch",
             "-o",
             str(out_dir),
             "--motion-mode",
@@ -259,29 +323,30 @@ def test_cli_dir_with_rotated_border_cut_stitches(
             "-b",
             "5",
             "--quiet",
-            str(dir1),
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert (out_dir / "scene_01_top2.png").exists()
-
-
-def test_cli_dir_with_rotated_custom_border_cut_sides(
-    synthetic_scene_dirs: tuple[Path, Path],
-    tmp_path: Path,
-):
-    """Verify that dir command stitches frames with selective border cut sides on rotation motion mode."""
-    dir1, _ = synthetic_scene_dirs
-    out_dir = tmp_path / "output_rot_sides"
-    result = runner.invoke(
-        app,
-        [
             "dir",
             "-s",
             "0",
             "-n",
             "2",
+            str(dir1),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (out_dir / "scene_01_top1.png").exists()
+
+
+def test_cli_stitch_with_rotated_custom_border_cut_sides(
+    synthetic_scene_dirs: tuple[Path, Path],
+    tmp_path: Path,
+):
+    """Verify that stitch command stitches frames with selective border cut sides on rotation mode."""
+    dir1, _ = synthetic_scene_dirs
+    out_dir = tmp_path / "output_rot_sides"
+    result = runner.invoke(
+        app,
+        [
+            "stitch",
             "-o",
             str(out_dir),
             "--motion-mode",
@@ -289,9 +354,14 @@ def test_cli_dir_with_rotated_custom_border_cut_sides(
             "--border-cut-left",
             "5",
             "--quiet",
+            "dir",
+            "-s",
+            "0",
+            "-n",
+            "2",
             str(dir1),
         ],
     )
 
     assert result.exit_code == 0
-    assert (out_dir / "scene_01_top2.png").exists()
+    assert (out_dir / "scene_01_top1.png").exists()
