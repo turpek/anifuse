@@ -1,6 +1,6 @@
 [project]
 name = "anifuse"
-version = "0.1.5"
+version = "0.1.6"
 description = "Motor inteligente para detecção e fusão de cenas panorâmicas de animes"
 readme = "README.md"
 authors = [
