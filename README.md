@@ -32,59 +32,83 @@ uv pip install git+https://github.com/turpek/anifuse.git
 
 ## 💻 Uso via Linha de Comando (CLI)
 
-O `anifuse` disponibiliza comandos especializados via `typer`:
+O `anifuse` disponibiliza comandos especializados com suporte a execução individual ou encadeamento em lote (*Multi-Command Chaining*) no mesmo processo:
 
-### 1. Costura de Diretório Único (`anifuse dir`)
+### 1. Costura de Diretórios (`anifuse stitch dir`)
 
-Processa uma pasta contendo frames sequenciais e gera o panorama resultante:
+Processa um ou múltiplos diretórios contendo frames sequenciais:
 
 ```bash
-# Panning horizontal travado com corte de borda de 5px
-uv run anifuse dir ./cenas/pan_horizontal/ --direction horizontal --border-cut 5 -o ./saida/
+# Modo afim (padrão) com corte de borda de 5px em ambos os sentidos
+uv run anifuse stitch -b 5 -o ./saida/ dir ./cenas/pan_horizontal/
 
-# Gerar ambas as versões (top1 e top2) para comparação visual
-uv run anifuse dir ./cenas/pan_vertical/ --direction vertical --stack-order both -o ./saida/
+# Múltiplos diretórios com panning horizontal travado
+uv run anifuse stitch --motion-mode translation --direction horizontal -o ./saida/ dir ./cena01/ ./cena02/
 
 # Amostrar frames específicos (começar no frame 10, processar 30 frames, pular de 2 em 2)
-uv run anifuse dir ./cenas/cena01/ -s 10 -n 30 --step 2 -o ./saida/
+uv run anifuse stitch -o ./saida/ dir ./cenas/cena01/ -s 10 -n 30 --step 2
 ```
 
-### 2. Processamento em Lote (`anifuse dirs`)
+### 2. Costura a partir de Arquivos Explícitos (`anifuse stitch image`)
 
-Aplica as mesmas configurações a múltiplos diretórios em sequência:
+Permite selecionar diretamente uma lista arbitrária de imagens:
 
 ```bash
-uv run anifuse dirs ./cena01/ ./cena02/ ./cena03/ --border-cut 8 -o ./resultados/
+uv run anifuse stitch --motion-mode scale -o ./saida/ image ./frames/f_01.png ./frames/f_02.png ./frames/f_03.png
+```
+
+### 3. Encadeamento em Lote (*Multi-Command Chaining*)
+
+Execute múltiplos trabalhos com configurações heterogêneas em uma única invocação sem reiniciar o interpretador Python:
+
+```bash
+uv run anifuse \
+  stitch --motion-mode rotation -b 5 dir ./cena_01 ./cena_02 \
+  stitch --motion-mode scale dir ./cena_03 \
+  stitch --motion-mode translation --direction vertical dir ./take_04
 ```
 
 ---
 
 ### ⚙️ Principais Opções da CLI
 
+#### Subcomando `stitch` (Motor, Alinhamento e Composição)
+
 | Parâmetro | Atalho | Padrão | Descrição |
 | :--- | :---: | :---: | :--- |
-| **Entrada e Amostragem** | | | |
-| `dir_path` / `dirs` | | *obrigatório* | Caminho do(s) diretório(s) contendo os frames da cena. |
-| `--start` | `-s` | `0` | Índice do frame inicial. |
-| `--frames` | `-n` | `None` | Quantidade máxima de frames para processar. |
-| `--step` | | `1` | Passo de amostragem (ex: `2` pula de 2 em 2 quadros). |
-| `--reverse` | | `False` | Inverte a ordem temporal dos frames selecionados. |
-| **Composição e Blend** | | | |
-| `--stack-order` | | `last-on-top` | Ordem das camadas: `last-on-top`, `first-on-top`, `both`. |
-| `--blend-mode` | | `hard-masking` | Modo de mesclagem (`hard-masking`, `solid-fill`, `normal`, `normal-linear`, `multiply`, `clip`). |
-| `--interp` | | `lanczos` | Interpolação afim (`lanczos`, `cubic`, `linear`, `nearest`, `area`). |
 | **Movimento e Eixo** | | | |
-| `--motion-mode` | | `translation` | Restrição de movimento (`translation`, `scale`, `rotation`, `affine`). |
+| `--motion-mode` | | `affine` | Modo de movimento de câmera (`affine`, `translation`, `scale`, `rotation`). |
 | `--direction` | | `auto` | Restrição de eixo no modo `translation` (`auto`, `horizontal`, `vertical`). |
+| `--confidence-thresh` | | `0.80` | Limiar mínimo de confiança para alinhamento. |
+| `--max-features` | | `5000` | Limite de pontos-chave ORB detectados por frame. |
+| `--distance-thresh` | | `40.0` | Distância Hamming máxima aceita para correspondência de descritores. |
+| `--nbest` | | `None` | Quantidade de melhores correspondências selecionadas para estimativa. |
+| **Composição e Blend** | | | |
+| `--stack-order` | | `both` | Ordem das camadas: `both`, `last-on-top`, `first-on-top`. |
+| `--blend-mode` | | `hard-masking` | Modo de mesclagem (`hard-masking`, `solid-fill`, `normal`, `normal-linear`, `multiply`, `clip`). |
+| `--hard-mask-thresh` | | `150` | Limiar do canal alfa para o modo `hard-masking`. |
+| `--interp` | | `lanczos` | Interpolação afim (`lanczos`, `cubic`, `linear`, `nearest`, `area`). |
 | `--sections` | | `cross` | Estratégia de janela ativa no canvas (`cross` [veloz], `global`). |
 | **Cortes de Emenda** | | | |
-| `--border-cut` | | `None` | Espessura uniforme de corte de borda na sobreposição (pixels). |
+| `--border-cut` | `-b` | `None` | Espessura uniforme de corte de borda na sobreposição (pixels). |
 | `--border-cut-<lado>` | | `0` | Corte individual por borda (`--border-cut-left`, `--border-cut-right`, `--border-cut-top`, `--border-cut-bottom`). |
 | **Saída e Destino** | | | |
 | `--output-dir` | `-o` | `.` | Diretório de destino para salvar os panoramas gerados. |
 | `--name-template` | | `{name}_top{top}.png` | Template customizado do nome (variáveis: `{name}`, `{top}`, `{ext}`). |
 | `--force` | `-f` | `False` | Sobrescreve arquivos existentes em vez de auto-incrementar. |
 | `--quiet` | `-q` | `False` | Oculta a barra de progresso interativa. |
+
+#### Subcomandos de Fonte (`dir` e `image`)
+
+| Parâmetro | Atalho | Padrão | Descrição |
+| :--- | :---: | :---: | :--- |
+| `PATHS...` | | *obrigatório* | Um ou mais diretórios (`dir`) ou arquivos de imagem (`image`). |
+| `--start` | `-s` | `0` | Índice inicial do frame. |
+| `--frames` | `-n` | `None` | Quantidade máxima de frames para processar. |
+| `--step` | | `1` | Passo de amostragem temporal de quadros. |
+| `--reverse` | | `False` | Inverte a ordem temporal dos frames selecionados. |
+| `--read-strategy` | | `batched` | Estratégia de I/O em disco (`batched`, `stream`). |
+| `--batch-size` | | `15` | Tamanho do lote de leitura em memória. |
 
 ---
 
