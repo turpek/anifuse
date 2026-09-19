@@ -161,3 +161,60 @@ def test_runner_executes_batch_of_multiple_jobs(synthetic_scene: Path, tmp_path:
     assert len(saved) == 2
     assert (out1 / "scene_alpha_top2.png").exists()
     assert (out2 / "scene_alpha_top1.png").exists()
+
+
+def test_runner_executes_video_job(tmp_path: Path):
+    """Verify JobRunner processes a video job and generates expected output composites."""
+    video_path = tmp_path / "runner_video.mp4"
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(str(video_path), fourcc, 10.0, (200, 200))
+    for f_idx in range(4):
+        arr = np.zeros((200, 200, 3), dtype=np.uint8)
+        for k in range(6):
+            x = 20 + (k % 3) * 50 + f_idx * 10
+            y = 20 + (k // 3) * 60
+            cv2.rectangle(arr, (x, y), (x + 20, y + 20), (255, 255, 255), -1)
+        writer.write(arr)
+    writer.release()
+
+    out_dir = tmp_path / "runner_out"
+    job = StitchJob(
+        motion=MotionConfig(motion_mode=MotionMode.TRANSLATION),
+        composition=CompositionConfig(stack_order=StackOrder.BOTH),
+        output=OutputConfig(output_dir=out_dir, quiet=True),
+        source=SourceConfig(source_type=SourceType.VIDEO, paths=(video_path,)),
+    )
+    runner = JobRunner(console=Console(quiet=True))
+
+    saved = runner.run_job(job)
+
+    assert len(saved) == 2
+    assert (out_dir / "runner_video_top1.png").exists()
+    assert (out_dir / "runner_video_top2.png").exists()
+
+
+def test_runner_continues_batch_when_one_target_fails(
+    synthetic_scene: Path, tmp_path: Path
+):
+    """Verify JobRunner logs error on failing target and proceeds to process subsequent targets."""
+    failing_dir = tmp_path / "failing_dir"
+    failing_dir.mkdir()
+    for idx in range(1, 3):
+        # Create solid unmatchable frames
+        arr = np.zeros((100, 100, 4), dtype=np.uint8)
+        arr[:, :, 3] = 255
+        Image(arr, ImageFormat.RGBA).save(failing_dir / f"f_{idx:02d}.png")
+
+    out_dir = tmp_path / "batch_resilient_out"
+    job = StitchJob(
+        motion=MotionConfig(motion_mode=MotionMode.TRANSLATION),
+        composition=CompositionConfig(stack_order=StackOrder.FIRST_ON_TOP),
+        output=OutputConfig(output_dir=out_dir, quiet=True),
+        source=SourceConfig(source_type=SourceType.DIR, paths=(failing_dir, synthetic_scene)),
+    )
+    runner = JobRunner(console=Console(quiet=True))
+
+    saved = runner.run_job(job)
+
+    assert len(saved) >= 1
+    assert (out_dir / "scene_alpha_top1.png").exists()

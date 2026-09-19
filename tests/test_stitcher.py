@@ -23,6 +23,7 @@ from anifuse.handlers import (
     TranslationHandler,
 )
 from anifuse.interfaces import (
+    AlignmentError,
     AlignmentResult,
     Frame,
     FrameAccumulator,
@@ -69,6 +70,26 @@ class _MockViewPolicy(ViewPolicy):
     ) -> tuple[AlignmentResult, Layer]:
         first_section = next(iter(sections))
         motion = MotionEstimate(dx=self.dx, dy=self.dy, confidence=0.99)
+        return AlignmentResult(ref=first_section.ref, motion=motion), Layer(incoming)
+
+
+class _FailingAtFrameViewPolicy(ViewPolicy):
+    """Mock ViewPolicy failing at a configured frame index with AlignmentError."""
+
+    def __init__(self, fail_at: int) -> None:
+        self.fail_at = fail_at
+
+    def resolve(
+        self,
+        base: Image,
+        incoming: Image,
+        sections: Iterable[Section],
+        frame_idx: int = 0,
+    ) -> tuple[AlignmentResult, Layer]:
+        if frame_idx == self.fail_at:
+            raise AlignmentError(f"Confidence below threshold for frame {frame_idx}")
+        first_section = next(iter(sections))
+        motion = MotionEstimate(dx=20.0, dy=0.0, confidence=0.99)
         return AlignmentResult(ref=first_section.ref, motion=motion), Layer(incoming)
 
 
@@ -328,3 +349,24 @@ def test_stitch_pipeline_with_scale_guarantees_fast_path(
 
         assert isinstance(result, Image)
         mock_warp.assert_not_called()
+
+
+def test_stitch_raises_alignment_error_with_partial_result(
+    synthetic_sequence: list[Frame],
+):
+    """Verify that stitch raises AlignmentError enriched with partial result on failure."""
+    reader = _MockFrameReader(synthetic_sequence)
+    stitcher = SceneStitcher(
+        handlers=[TranslationHandler()],
+        view_policy=_FailingAtFrameViewPolicy(fail_at=3),
+    )
+
+    with pytest.raises(AlignmentError) as exc_info:
+        stitcher.stitch(reader, stack_order=StackOrder.FIRST_ON_TOP)
+
+    err = exc_info.value
+    assert err.frame_idx == 3
+    assert err.aligned_count == 2
+    assert isinstance(err.partial_result, Image)
+    assert err.partial_result.size[0] == 120
+    assert err.partial_result.size[1] == 100

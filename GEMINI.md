@@ -33,6 +33,7 @@
 - **Linguagem:** Python 3.12+ (gerenciado via `uv`).
 - **Dependências Principais:**
   - `anicrop` (consumido via GitHub: `https://github.com/turpek/anicrop.git`).
+  - `aniseek` (consumido via GitHub: `https://github.com/turpek/aniseek.git`).
   - `numpy>=2.0.0`
   - `opencv-python>=4.10.0`
   - `loguru>=0.7.0`
@@ -120,9 +121,11 @@ src/anifuse/
 - **Branch `main` (Produção e Distribuição Limpa):** Mantém estritamente os arquivos essenciais de código, testes, `README.md` e build, com histórico semântico atômico (cherry-pick de cada commit de produção) gerado automaticamente pelo Makefile.
   - Sincronizar código limpo para a main: `make sync-main`.
   - Publicar a main no GitHub: `make push-main`.
-- **Atualizar o Motor `anicrop`:**
+- **Atualizar o Motor `anicrop` e Decodificador `aniseek`:**
   - Quando houver novidades no `anicrop` no GitHub: `make update-core`.
-  - Para sincronizar a documentação local: `make sync-docs`.
+  - Quando houver novidades no `aniseek` no GitHub: `make update-aniseek`.
+  - Para atualizar ambos os pacotes: `make update-deps`.
+  - Para sincronizar a documentação local de ambos: `make sync-docs`.
 
 ---
 
@@ -144,6 +147,9 @@ O `anifuse` consome o motor gráfico `anicrop`. Sempre que precisar consultar m�
 - **Sistema de Histórico & Undo/Redo (`GlobalHistory`, `ActionPolicy`, `MacroCommand`):** [docs/anicrop/history.md](file:///home/gui/python/anifuse/docs/anicrop/history.md)
 - **Infraestrutura Reativa & Proxies (`ProxyLayer`, `GroupProxy`, `ProxyRegistry`):** [docs/anicrop/proxy.md](file:///home/gui/python/anifuse/docs/anicrop/proxy.md)
 - **Métricas de Performance & Benchmarks:** [docs/anicrop/benchmark.md](file:///home/gui/python/anifuse/docs/anicrop/benchmark.md)
+
+### 7.1. Referência do Leitor e Decodificador de Vídeo (`aniseek`)
+- **Documentação de Leitores Assíncronos & Fatiamento:** [docs/aniseek/readers.md](file:///home/gui/python/anifuse/docs/aniseek/readers.md)
 
 ---
 

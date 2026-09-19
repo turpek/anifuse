@@ -35,3 +35,8 @@ def test_config_hard_mask_threshold_syncs_with_anicrop():
     assert anicrop.config.hard_mask_threshold == 180
 
     config.hard_mask_threshold = original_threshold
+
+
+def test_config_log_level_default():
+    """Verify default log level is set to ERROR to silence third-party debug output."""
+    assert config.log_level == "ERROR"

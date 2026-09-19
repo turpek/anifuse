@@ -155,12 +155,16 @@ def test_orb_estimators_default_init_parameters():
     assert transform_est.rotate_threshold == 0.10
     assert transform_est.scale_threshold == 0.0010
     assert transform_est.fast_threshold == 10
+    assert transform_est.confidence_threshold == 0.25
     assert rot_est.rotate_threshold == 0.10
     assert rot_est.scale_threshold == 0.0010
     assert rot_est.fast_threshold == 10
+    assert rot_est.confidence_threshold == 0.25
     assert scale_est.scale_threshold == 0.0010
     assert scale_est.fast_threshold == 10
+    assert scale_est.confidence_threshold == 0.25
     assert trans_est.fast_threshold == 10
+    assert trans_est.confidence_threshold == 0.25
 
 
 def test_orb_estimators_custom_parameters():
@@ -221,3 +225,123 @@ def test_orb_extract_matches_reuses_cached_ref(synthetic_pattern_frame: Image):
     assert kp1_out is kp1
     assert desc1_out is desc1
     assert len(valid) >= 4
+
+
+@pytest.fixture
+def distinct_pattern_frame() -> Image:
+    """Generate a distinct synthetic 300x300 frame with circles instead of squares."""
+    img = np.zeros((300, 300, 3), dtype=np.uint8)
+    for i in range(12):
+        x = 20 + (i % 3) * 80
+        y = 20 + (i // 3) * 70
+        cv2.circle(img, (x + 20, y + 20), 18, (180, 180, 180), -1)
+        cv2.putText(
+            img, f"Z{i}", (x + 5, y + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1
+        )
+    return Image(img, ImageFormat.RGB)
+
+
+def test_orb_transform_estimator_bypasses_transform_on_low_confidence(
+    synthetic_pattern_frame: Image,
+    distinct_pattern_frame: Image,
+):
+    """Verify that OrbTransformEstimator bypasses rotation and scaling when confidence is below threshold."""
+    estimator = OrbTransformEstimator(
+        max_features=2000,
+        confidence_threshold=0.25,
+    )
+
+    estimate, returned_frame = estimator.estimate(
+        synthetic_pattern_frame, distinct_pattern_frame
+    )
+
+    assert estimate.angle == 0.0
+    assert estimate.scale == 1.0
+    assert estimate.confidence < 0.25
+    assert len(returned_frame.edits) == 1
+
+
+def test_orb_scale_estimator_bypasses_scale_on_low_confidence(
+    synthetic_pattern_frame: Image,
+    distinct_pattern_frame: Image,
+):
+    """Verify that OrbScaleEstimator bypasses scaling when confidence is below threshold."""
+    estimator = OrbScaleEstimator(
+        max_features=2000,
+        confidence_threshold=0.25,
+    )
+
+    estimate, returned_frame = estimator.estimate(
+        synthetic_pattern_frame, distinct_pattern_frame
+    )
+
+    assert estimate.angle == 0.0
+    assert estimate.scale == 1.0
+    assert estimate.confidence < 0.25
+    assert len(returned_frame.edits) == 1
+
+
+def test_orb_rotation_estimator_bypasses_rotation_on_low_confidence(
+    synthetic_pattern_frame: Image,
+    distinct_pattern_frame: Image,
+):
+    """Verify that OrbRotationEstimator bypasses rotation when confidence is below threshold."""
+    estimator = OrbRotationEstimator(
+        max_features=2000,
+        confidence_threshold=0.25,
+    )
+
+    estimate, returned_frame = estimator.estimate(
+        synthetic_pattern_frame, distinct_pattern_frame
+    )
+
+    assert estimate.angle == 0.0
+    assert estimate.scale == 1.0
+    assert estimate.confidence < 0.25
+    assert len(returned_frame.edits) == 1
+
+
+def test_calculate_confidence_matches_ratio():
+    """Verify that _calculate_confidence computes inliers divided by total matches."""
+    estimator = OrbTranslationEstimator()
+    diff = np.array([[10, 5], [10, 5], [10, 6], [100, 200]], dtype=int)
+
+    conf = estimator._calculate_confidence(diff, 10.0, 5.0, total_matches=10)
+
+    assert conf == pytest.approx(0.3)
+
+
+def test_orb_transform_estimator_rejects_degenerate_determinant(
+    monkeypatch: pytest.MonkeyPatch,
+    synthetic_pattern_frame: Image,
+):
+    """Verify that OrbTransformEstimator sets confidence to zero when affine determinant is non-positive."""
+    estimator = OrbTransformEstimator(max_features=1000)
+    degenerate_matrix = np.array([[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    monkeypatch.setattr(
+        cv2,
+        "estimateAffinePartial2D",
+        lambda p1, p2: (degenerate_matrix, np.ones((len(p1), 1), dtype=np.uint8)),
+    )
+
+    estimate, _ = estimator.estimate(synthetic_pattern_frame, synthetic_pattern_frame)
+
+    assert estimate.confidence == 0.0
+
+
+def test_orb_transform_estimator_rejects_scale_out_of_bounds(
+    monkeypatch: pytest.MonkeyPatch,
+    synthetic_pattern_frame: Image,
+):
+    """Verify that OrbTransformEstimator sets confidence to zero when detected scale is outside valid range."""
+    estimator = OrbTransformEstimator(max_features=1000)
+    huge_scale_matrix = np.array([[20.0, 0.0, 0.0], [0.0, 20.0, 0.0]])
+    monkeypatch.setattr(
+        cv2,
+        "estimateAffinePartial2D",
+        lambda p1, p2: (huge_scale_matrix, np.ones((len(p1), 1), dtype=np.uint8)),
+    )
+
+    estimate, _ = estimator.estimate(synthetic_pattern_frame, synthetic_pattern_frame)
+
+    assert estimate.confidence == 0.0

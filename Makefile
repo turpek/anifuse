@@ -5,7 +5,7 @@ RUN_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
 $(eval $(RUN_ARGS):;@:)
 
 # Declara que os alvos não são arquivos.
-.PHONY: install update-core test test_speed test-cov mypy format lint sync-docs push-dev pull-dev sync-main push-main
+.PHONY: install update-core update-aniseek update-deps test test_speed test-cov mypy format lint sync-docs sync-docs-anicrop sync-docs-aniseek push-dev pull-dev sync-main push-main
 
 # ==============================================================================
 # Ambiente e Dependências
@@ -20,6 +20,18 @@ install:
 update-core:
 	@echo "==> Atualizando a dependência core (anicrop)..."
 	uv lock --upgrade-package anicrop
+	uv sync
+
+# Atualiza a dependência de I/O de vídeo 'aniseek' para a versão mais recente
+update-aniseek:
+	@echo "==> Atualizando a dependência de vídeo (aniseek)..."
+	uv lock --upgrade-package aniseek
+	uv sync
+
+# Atualiza todas as dependências do ecossistema (anicrop e aniseek)
+update-deps:
+	@echo "==> Atualizando todas as dependências do ecossistema (anicrop e aniseek)..."
+	uv lock --upgrade-package anicrop --upgrade-package aniseek
 	uv sync
 
 # ==============================================================================
@@ -52,11 +64,11 @@ format:
 	uv run autopep8 --in-place --recursive --max-line-length 89 --ignore E501,E402,W503,W504 src/ tests/
 
 # ==============================================================================
-# Sincronização de Documentação do Motor Core (anicrop -> anifuse)
+# Sincronização de Documentação Externa (anicrop & aniseek -> anifuse)
 # ==============================================================================
 
 # Espelha a documentação do anicrop em docs/anicrop/
-sync-docs:
+sync-docs-anicrop:
 	@echo "==> Sincronizando documentação do anicrop em docs/anicrop/..."
 	@mkdir -p docs/anicrop
 	@if [ -d "../docs" ]; then \
@@ -73,6 +85,25 @@ sync-docs:
 		rm -rf "$$TMP_DIR" && \
 		echo "==> Documentação sincronizada com sucesso a partir do GitHub!"; \
 	fi
+
+# Espelha a documentação do aniseek em docs/aniseek/
+sync-docs-aniseek:
+	@echo "==> Sincronizando documentação do aniseek em docs/aniseek/..."
+	@mkdir -p docs/aniseek
+	@if [ -d "../aniseek/docs" ]; then \
+		cp -r ../aniseek/docs/* docs/aniseek/ && \
+		echo "==> Documentação copiada com sucesso a partir do diretório local ../aniseek/docs/"; \
+	else \
+		echo "==> Clonando documentação remota do aniseek..."; \
+		TMP_DIR=$$(mktemp -d) && \
+		git clone --depth 1 --branch main https://github.com/turpek/aniseek.git "$$TMP_DIR" && \
+		cp -r "$$TMP_DIR/docs/"* docs/aniseek/ && \
+		rm -rf "$$TMP_DIR" && \
+		echo "==> Documentação sincronizada com sucesso a partir do GitHub!"; \
+	fi
+
+# Sincroniza a documentação de todas as dependências externas
+sync-docs: sync-docs-anicrop sync-docs-aniseek
 
 # ==============================================================================
 # Fluxo Git Multi-PC (dev <-> main com sync-point)

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pytest
 
 from anifuse.cli.factories import (
@@ -43,6 +45,7 @@ from anifuse.reader import (
     BatchedReadStrategy,
     ImageSequenceReader,
     StreamReadStrategy,
+    VideoReader,
 )
 from anifuse.stitcher import SceneStitcher
 from anifuse.view_policy import CrossSections, GlobalSections
@@ -208,6 +211,45 @@ def test_reader_factory_creates_image_sequence_reader_from_image_paths(tmp_path:
     reader = ReaderFactory.create(source)
 
     assert isinstance(reader, ImageSequenceReader)
+
+
+def test_reader_factory_resolves_video_bounds_frame_duration():
+    """Verify resolve_video_bounds computes integer end index from duration."""
+    start, end = ReaderFactory.resolve_video_bounds(start=10, end=None, duration=15)
+
+    assert start == 10
+    assert end == 25
+
+
+def test_reader_factory_resolves_video_bounds_time_duration():
+    """Verify resolve_video_bounds computes end timestamp in seconds from duration."""
+    start, end = ReaderFactory.resolve_video_bounds(
+        start="01:00", end=None, duration="00:30"
+    )
+
+    assert start == "01:00"
+    assert end == 90.0
+
+
+def test_reader_factory_resolves_video_bounds_rejects_end_and_duration():
+    """Verify resolve_video_bounds raises ValueError when both end and duration are provided."""
+    with pytest.raises(ValueError, match="mutuamente exclusivas"):
+        ReaderFactory.resolve_video_bounds(start=0, end=10, duration=5)
+
+
+def test_reader_factory_creates_video_reader(tmp_path: Path):
+    """Verify ReaderFactory instantiates VideoReader for SourceType.VIDEO."""
+    video_path = tmp_path / "video_test.mp4"
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(str(video_path), fourcc, 10.0, (16, 16))
+    writer.write(np.zeros((16, 16, 3), dtype=np.uint8))
+    writer.release()
+
+    source = SourceConfig(source_type=SourceType.VIDEO, paths=(video_path,))
+    reader = ReaderFactory.create(source)
+
+    assert isinstance(reader, VideoReader)
+    reader.close()
 
 
 @pytest.mark.parametrize(

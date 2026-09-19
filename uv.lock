@@ -9,7 +9,7 @@ resolution-markers = [
 [[package]]
 name = "anicrop"
 version = "0.6.4"
-source = { git = "https://github.com/turpek/anicrop.git?branch=main#b7655f2d00f108fa8c818c57e49e913e72667f3b" }
+source = { git = "https://github.com/turpek/anicrop.git?branch=main#485010ec9880ec699513612fd6b34d01f4d2caeb" }
 dependencies = [
     { name = "imagesize" },
     { name = "numpy" },
@@ -24,6 +24,7 @@ version = "0.1.6"
 source = { editable = "." }
 dependencies = [
     { name = "anicrop" },
+    { name = "aniseek" },
     { name = "loguru" },
     { name = "numpy" },
     { name = "opencv-python" },
@@ -43,6 +44,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anicrop", git = "https://github.com/turpek/anicrop.git?branch=main" },
+    { name = "aniseek", git = "https://github.com/turpek/aniseek.git?branch=main" },
     { name = "loguru", specifier = ">=0.7.0" },
     { name = "numpy", specifier = ">=2.0.0" },
     { name = "opencv-python", specifier = ">=4.10.0" },
@@ -57,6 +59,17 @@ dev = [
     { name = "pytest", specifier = ">=8.0.0" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
     { name = "ruff", specifier = ">=0.9.0" },
+]
+
+[[package]]
+name = "aniseek"
+version = "0.1.0a1"
+source = { git = "https://github.com/turpek/aniseek.git?branch=main#677d6e2de228820a84afd5e4bef929156d4cf01f" }
+dependencies = [
+    { name = "loguru" },
+    { name = "numpy" },
+    { name = "opencv-python" },
+    { name = "pathlib3x" },
 ]
 
 [[package]]
@@ -230,6 +243,28 @@ wheels = [
 ]
 
 [[package]]
+name = "cli-exit-tools"
+version = "1.2.7"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "lib-detect-testenv" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c1/31/cdfa180d48d35df219dea166b6932a190c90de2a30c4c0243243abd6eba7/cli_exit_tools-1.2.7.tar.gz", hash = "sha256:e752427a4aa9db1f18370c8dc11ebef6e245cc5891ec2fa79e7169be583c2423", size = 31417, upload-time = "2024-10-02T22:59:45.138Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4e/04/99c10558a3f6e7b817d16bfcd56caf12ac0c0cfd5944f26b1bf5fe2f3a30/cli_exit_tools-1.2.7-py3-none-any.whl", hash = "sha256:bdfdd8b0613e49faf6f4d8695328ce815858f980ea8ab2ddb69867ca1970e551", size = 11912, upload-time = "2024-10-02T22:59:43.525Z" },
+]
+
+[[package]]
+name = "click"
+version = "8.5.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c7/0e/7fa0ef50764b67090eca4114772a2abf8b6148198475e54c660b97caeee6/click-8.5.0.tar.gz", hash = "sha256:ba0d2089de75ea0310e2dde03160e6ca10009947fb95a182f9b54021bb272e34", size = 382235, upload-time = "2026-08-26T13:33:14.56Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/58/50/6c0d534c5f134586a8e1ba4e330569e32f057e33372ae556463212fb4cd3/click-8.5.0-py3-none-any.whl", hash = "sha256:255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360", size = 125251, upload-time = "2026-08-26T13:33:12.928Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -353,6 +388,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/72/34/14ca021ce8e5dfedc35312d08ba8bf51fdd999c576889fc2c24cb97f4f10/iniconfig-2.3.0.tar.gz", hash = "sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730", size = 20503, upload-time = "2025-10-18T21:55:43.219Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl", hash = "sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12", size = 7484, upload-time = "2025-10-18T21:55:41.639Z" },
+]
+
+[[package]]
+name = "lib-detect-testenv"
+version = "3.0.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "rich-click" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8b/f5/6bb283b7f976e80f4129254ce54257aaeba1d6f43afa9b1cc6c3dfb9a3eb/lib_detect_testenv-3.0.4.tar.gz", hash = "sha256:f016488b5b0211540887150ed2e8e21763ee9bdf6dd1117efeb7b1a6006f0c92", size = 61981, upload-time = "2026-07-31T22:40:35.096Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1c/f5/88129fab84b5ff5a74624b2c697c176017a8f5a1c991faa8e15f7e4e9957/lib_detect_testenv-3.0.4-py3-none-any.whl", hash = "sha256:5b26536c0c5c22428dd239dee3322ea22746b551bea15d3c553eb9227d1e46d0", size = 19197, upload-time = "2026-07-31T22:40:33.994Z" },
 ]
 
 [[package]]
@@ -664,6 +711,19 @@ wheels = [
 ]
 
 [[package]]
+name = "pathlib3x"
+version = "2.0.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cli-exit-tools" },
+    { name = "click" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ba/58/526842390491f3b573487c21b0acd1028169c3c7ae2933101595aabc5736/pathlib3x-2.0.3.tar.gz", hash = "sha256:9cc220d8706a5f047d34602eadf1cf3435ecbecf54dc676259c1ef1bef10ed60", size = 77471, upload-time = "2023-07-20T07:24:05.992Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bb/2e/6dbfabf2ef7de276cfed3352753f2366b926805b232f049ecf4b60a9b245/pathlib3x-2.0.3-py3-none-any.whl", hash = "sha256:6948a0675b4b7b392ba8d89866aade48a935626bceb979381d4cd3c6b423878d", size = 25889, upload-time = "2023-07-20T07:24:04.125Z" },
+]
+
+[[package]]
 name = "pathspec"
 version = "1.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -829,6 +889,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c0/8f/0722ca900cc807c13a6a0c696dacf35430f72e0ec571c4275d2371fca3e9/rich-15.0.0.tar.gz", hash = "sha256:edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36", size = 230680, upload-time = "2026-04-12T08:24:00.75Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/82/3b/64d4899d73f91ba49a8c18a8ff3f0ea8f1c1d75481760df8c68ef5235bf5/rich-15.0.0-py3-none-any.whl", hash = "sha256:33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb", size = 310654, upload-time = "2026-04-12T08:24:02.83Z" },
+]
+
+[[package]]
+name = "rich-click"
+version = "1.9.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "rich" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/96/3e/5688fdd83aea416de336582a274f2bc8236b5c261b04c11e17bc262786ad/rich_click-1.9.9.tar.gz", hash = "sha256:324cba7513cd4187ee92b2eef21f071714e45be062458c8b157bd7e0c81103e3", size = 75866, upload-time = "2026-09-05T19:20:14.799Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b5/51/b2b91aec091e86bc961e5164f00207d89f133cc82b5ddad541d2132ea819/rich_click-1.9.9-py3-none-any.whl", hash = "sha256:365e7a9d0adb42e41ea832a0a12e02c44c079a26536dee688125eb9814f97274", size = 71910, upload-time = "2026-09-05T19:20:13.587Z" },
 ]
 
 [[package]]
