@@ -96,10 +96,14 @@ sync-docs-aniseek:
 	else \
 		echo "==> Clonando documentação remota do aniseek..."; \
 		TMP_DIR=$$(mktemp -d) && \
-		git clone --depth 1 --branch main https://github.com/turpek/aniseek.git "$$TMP_DIR" && \
-		cp -r "$$TMP_DIR/docs/"* docs/aniseek/ && \
-		rm -rf "$$TMP_DIR" && \
-		echo "==> Documentação sincronizada com sucesso a partir do GitHub!"; \
+		git clone --depth 1 --branch dev https://github.com/turpek/aniseek.git "$$TMP_DIR" && \
+		if [ -d "$$TMP_DIR/docs" ]; then \
+			cp -r "$$TMP_DIR/docs/"* docs/aniseek/ && \
+			echo "==> Documentação sincronizada com sucesso a partir do GitHub!"; \
+		else \
+			echo "==> Nenhum diretório 'docs/' encontrado na branch dev do aniseek."; \
+		fi; \
+		rm -rf "$$TMP_DIR"; \
 	fi
 
 # Sincroniza a documentação de todas as dependências externas
