@@ -78,6 +78,7 @@ class EstimatorFactory:
             "interp": composition.interp,
             "scale_threshold": motion.scale_threshold,
             "rotate_threshold": motion.rotate_threshold,
+            "confidence_threshold": motion.confidence_threshold,
         }
         sig = inspect.signature(estimator_cls.__init__)
         filtered_kwargs = {

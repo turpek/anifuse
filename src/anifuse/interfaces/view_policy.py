@@ -68,4 +68,15 @@ class ViewPolicy(ABC):
 class AlignmentError(RuntimeError):
     """Raised when no candidate search section satisfies the confidence threshold."""
 
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        frame_idx: int = 0,
+        aligned_count: int = 1,
+        partial_result: Image | tuple[Image, Image] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.frame_idx = frame_idx
+        self.aligned_count = aligned_count
+        self.partial_result = partial_result

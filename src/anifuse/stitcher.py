@@ -19,6 +19,7 @@ from anifuse.interfaces.stitcher import (
     StitchContext,
     Stitcher,
 )
+from anifuse.interfaces.view_policy import AlignmentError
 from anifuse.view_policy import AdaptiveViewPolicy, CrossSections
 
 if TYPE_CHECKING:
@@ -52,7 +53,7 @@ class SceneStitcher(Stitcher):
         estimator: Estimator | None = None,
         handlers: list[TransformHandler] | None = None,
         mask_view: MaskView | None = None,
-        confidence_threshold: float = 0.80,
+        confidence_threshold: float = 0.25,
         rotate_threshold: float = 0.10,
         scale_threshold: float = 0.0010,
         translation_threshold: float = 0.0,
@@ -69,6 +70,7 @@ class SceneStitcher(Stitcher):
                 rotate_threshold=rotate_threshold,
                 scale_threshold=scale_threshold,
                 fast_threshold=fast_threshold,
+                confidence_threshold=confidence_threshold,
             )
         )
         actual_handlers: list[TransformHandler] = (
@@ -117,17 +119,27 @@ class SceneStitcher(Stitcher):
             stack_order, initial_layer, interp=interp, effects=effects
         )
         last_region: Region = initial_layer.global_region
+        aligned_count = 1
 
         for step, frame in enumerate(frame_iter, start=2):
             sections = sections_cls(
                 accumulator.reference_layer.global_region, last_region
             )
-            alignment, layer2 = self.view_policy.resolve(
-                base=accumulator.reference_layer.edits[0].image,
-                incoming=frame.image,
-                sections=sections,
-                frame_idx=frame.idx,
-            )
+            try:
+                alignment, layer2 = self.view_policy.resolve(
+                    base=accumulator.reference_layer.edits[0].image,
+                    incoming=frame.image,
+                    sections=sections,
+                    frame_idx=frame.idx,
+                )
+            except AlignmentError as err:
+                raise AlignmentError(
+                    f"Alinhamento interrompido no frame {frame.idx}: baixa confiança detectada.",
+                    frame_idx=frame.idx,
+                    aligned_count=aligned_count,
+                    partial_result=accumulator.result(),
+                ) from err
+
             layer2.name = f"frame_{frame.idx}"
             layer2.blend_mode = blend_mode
             for handler in self.handlers:
@@ -143,6 +155,7 @@ class SceneStitcher(Stitcher):
             )
             accumulator.push(context)
             last_region = layer2.global_region
+            aligned_count += 1
 
             if self.on_progress is not None:
                 self.on_progress(step, total_frames, alignment)

@@ -93,7 +93,7 @@ def stitch_callback(
         typer.Option(
             "--confidence-thresh", help="Limiar mínimo de confiança para alinhamento."
         ),
-    ] = 0.80,
+    ] = 0.25,
     fast_thresh: Annotated[
         int,
         typer.Option(
@@ -351,6 +351,111 @@ def stitch_image_cmd(
         step=step,
         reverse=reverse,
         read_strategy=read_strategy,
+        batch_size=batch_size,
+    )
+    job = StitchJob(
+        motion=motion,
+        composition=composition,
+        effects=effects,
+        output=output,
+        source=source,
+    )
+    runner = JobRunner(console=console)
+    runner.run_job(job)
+
+
+@stitch_app.command("video")
+def stitch_video_cmd(
+    ctx: typer.Context,
+    videos: Annotated[
+        list[Path],
+        typer.Argument(
+            help="Um ou mais arquivos de vídeo contendo a cena.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+        ),
+    ],
+    start: Annotated[
+        str | None,
+        typer.Option(
+            "--start",
+            "-s",
+            help="Ponto inicial: aceita frame (int), segundos (float) ou timestamp (str ex: '01:30').",
+        ),
+    ] = None,
+    end: Annotated[
+        str | None,
+        typer.Option(
+            "--end",
+            "-e",
+            help="Ponto final limite: aceita frame (int), segundos (float) ou timestamp (str ex: '02:45').",
+        ),
+    ] = None,
+    duration: Annotated[
+        str | None,
+        typer.Option(
+            "--duration",
+            "-d",
+            help="Duração da cena: aceita quantidade de frames (int), segundos (float) ou tempo (str). Mutuamente exclusivo com --end.",
+        ),
+    ] = None,
+    step: Annotated[
+        int,
+        typer.Option("--step", help="Passo de amostragem de frames."),
+    ] = 1,
+    indices: Annotated[
+        str | None,
+        typer.Option(
+            "--indices",
+            help="Lista explícita de índices de frames separados por vírgula (ex: '10,15,20').",
+        ),
+    ] = None,
+    reverse: Annotated[
+        bool,
+        typer.Option("--reverse", help="Inverter o sentido de leitura do vídeo."),
+    ] = False,
+    batch_size: Annotated[
+        int,
+        typer.Option("--batch-size", help="Capacidade máxima da fila em memória para pré-carregamento."),
+    ] = 15,
+) -> None:
+    """Funde cenas panorâmicas a partir de um ou mais arquivos de vídeo."""
+    if end is not None and duration is not None:
+        raise typer.BadParameter("As opções '--end' e '--duration' são mutuamente exclusivas.")
+
+    def _parse_val(val: str | None) -> int | float | str | None:
+        if val is None:
+            return None
+        stripped = val.strip()
+        if stripped.isdigit():
+            return int(stripped)
+        try:
+            return float(stripped)
+        except ValueError:
+            return stripped
+
+    parsed_start = _parse_val(start)
+    parsed_end = _parse_val(end)
+    parsed_duration = _parse_val(duration)
+
+    parsed_indices: tuple[int, ...] | None = None
+    if indices:
+        try:
+            parsed_indices = tuple(int(x.strip()) for x in indices.split(",") if x.strip())
+        except ValueError as err:
+            raise typer.BadParameter(f"Formato inválido para --indices: '{indices}'") from err
+
+    motion, composition, effects, output = ctx.obj
+    source = SourceConfig(
+        source_type=SourceType.VIDEO,
+        paths=tuple(videos),
+        start=parsed_start,
+        end=parsed_end,
+        duration=parsed_duration,
+        indices=parsed_indices,
+        step=step,
+        reverse=reverse,
         batch_size=batch_size,
     )
     job = StitchJob(

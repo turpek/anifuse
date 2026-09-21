@@ -127,7 +127,7 @@ class MotionConfig:
 
     motion_mode: MotionMode = MotionMode.AFFINE
     direction: DirectionConstraint = DirectionConstraint.AUTO
-    confidence_threshold: float = 0.80
+    confidence_threshold: float = 0.25
     fast_threshold: int = 10
     rotate_threshold: float = 0.10
     scale_threshold: float = 0.0010
@@ -178,8 +178,11 @@ class SourceConfig:
 
     source_type: SourceType = SourceType.DIR
     paths: tuple[Path, ...] = ()
-    start: int = 0
+    start: int | float | str | None = 0
+    end: int | float | str | None = None
+    duration: int | float | str | None = None
     frames: int | None = None
+    indices: tuple[int, ...] | None = None
     step: int = 1
     reverse: bool = False
     read_strategy: ReadStrategyType = ReadStrategyType.BATCHED

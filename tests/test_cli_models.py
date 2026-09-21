@@ -39,7 +39,7 @@ def test_motion_config_defaults():
 
     assert config.motion_mode == MotionMode.AFFINE
     assert config.direction == DirectionConstraint.AUTO
-    assert config.confidence_threshold == 0.80
+    assert config.confidence_threshold == 0.25
     assert config.fast_threshold == 10
     assert config.rotate_threshold == 0.10
     assert config.scale_threshold == 0.0010

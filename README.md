@@ -57,7 +57,22 @@ Permite selecionar diretamente uma lista arbitrária de imagens:
 uv run anifuse stitch --motion-mode scale -o ./saida/ image ./frames/f_01.png ./frames/f_02.png ./frames/f_03.png
 ```
 
-### 3. Encadeamento em Lote (*Multi-Command Chaining*)
+### 3. Costura Direta de Vídeos (`anifuse stitch video`)
+
+Funde cenas a partir de arquivos de vídeo (`.mp4`, `.mkv`, etc.), suportando seleção temporal ou por frames:
+
+```bash
+# Por intervalo de tempo (de 01:20 a 01:45)
+uv run anifuse stitch -o ./saida/ video ./animes/ep01.mkv --start "01:20" --end "01:45"
+
+# Por duração relativa (a partir de 00:30 com duração de 15 segundos)
+uv run anifuse stitch -o ./saida/ video ./animes/ep01.mp4 --start "00:30" --duration "15"
+
+# Por contagem de frames brutos em ordem reversa
+uv run anifuse stitch -o ./saida/ video ./animes/pan.mp4 --start 120 --end 240 --reverse
+```
+
+### 4. Encadeamento em Lote (*Multi-Command Chaining*)
 
 Execute múltiplos trabalhos com configurações heterogêneas em uma única invocação sem reiniciar o interpretador Python:
 
@@ -65,7 +80,7 @@ Execute múltiplos trabalhos com configurações heterogêneas em uma única inv
 uv run anifuse \
   stitch --motion-mode rotation -b 5 dir ./cena_01 ./cena_02 \
   stitch --motion-mode scale dir ./cena_03 \
-  stitch --motion-mode translation --direction vertical dir ./take_04
+  stitch --motion-mode translation video ./animes/take_04.mp4 --start "00:15" --duration "10"
 ```
 
 ---
@@ -109,6 +124,19 @@ uv run anifuse \
 | `--reverse` | | `False` | Inverte a ordem temporal dos frames selecionados. |
 | `--read-strategy` | | `batched` | Estratégia de I/O em disco (`batched`, `stream`). |
 | `--batch-size` | | `15` | Tamanho do lote de leitura em memória. |
+
+#### Subcomando de Vídeo (`video`)
+
+| Parâmetro | Atalho | Padrão | Descrição |
+| :--- | :---: | :---: | :--- |
+| `VIDEOS...` | | *obrigatório* | Um ou mais arquivos de vídeo (`.mp4`, `.mkv`, etc.). |
+| `--start` | `-s` | `None` | Ponto inicial: frame (`int`), segundos (`float`) ou timestamp (`str` ex: `"01:30"`). |
+| `--end` | `-e` | `None` | Ponto final limite: frame (`int`), segundos (`float`) ou timestamp (`str` ex: `"02:45"`). |
+| `--duration` | `-d` | `None` | Duração da cena (frames ou tempo). Mutuamente exclusivo com `--end`. |
+| `--step` | | `1` | Passo de amostragem de frames (pula quadros via decodificação rápida). |
+| `--indices` | | `None` | Lista explícita de índices de frames separados por vírgula (ex: `"10,15,20"`). |
+| `--reverse` | | `False` | Inverte o sentido de leitura do vídeo (retrocesso assíncrono de alta performance). |
+| `--batch-size` | | `15` | Capacidade máxima da fila em memória para pré-carregamento concorrente. |
 
 ---
 

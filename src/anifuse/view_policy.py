@@ -136,7 +136,7 @@ class AdaptiveViewPolicy(ViewPolicy):
         self,
         estimator: Estimator,
         mask_view: MaskView | None = None,
-        confidence_threshold: float = 0.80,
+        confidence_threshold: float = 0.25,
     ) -> None:
         """Initialize with motion estimator, optional mask view, and confidence threshold."""
         self._estimator = estimator

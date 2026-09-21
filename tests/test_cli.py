@@ -365,3 +365,80 @@ def test_cli_stitch_with_rotated_custom_border_cut_sides(
 
     assert result.exit_code == 0
     assert (out_dir / "scene_01_top1.png").exists()
+
+
+def test_cli_stitch_video_end_and_duration_mutually_exclusive(tmp_path: Path):
+    """Verify that specifying both --end and --duration for stitch video errors."""
+    fake_video = tmp_path / "fake.mp4"
+    fake_video.touch()
+    result = runner.invoke(
+        app,
+        [
+            "stitch",
+            "video",
+            "--end",
+            "10",
+            "--duration",
+            "5",
+            str(fake_video),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "mutuamente exclusivas" in result.output
+
+
+def test_cli_stitch_video_invalid_indices(tmp_path: Path):
+    """Verify that passing non-integer values to --indices errors with bad parameter."""
+    fake_video = tmp_path / "fake.mp4"
+    fake_video.touch()
+    result = runner.invoke(
+        app,
+        [
+            "stitch",
+            "video",
+            "--indices",
+            "abc,def",
+            str(fake_video),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "Formato inválido para --indices" in result.output
+
+
+def test_cli_stitch_video_with_synthetic_video(tmp_path: Path):
+    """Verify that stitch video processes frames from video and writes composite outputs."""
+    video_path = tmp_path / "test_pan.mp4"
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(str(video_path), fourcc, 10.0, (200, 200))
+    for f_idx in range(4):
+        arr = np.zeros((200, 200, 3), dtype=np.uint8)
+        for k in range(6):
+            x = 20 + (k % 3) * 50 + f_idx * 10
+            y = 20 + (k // 3) * 60
+            cv2.rectangle(arr, (x, y), (x + 20, y + 20), (255, 255, 255), -1)
+        writer.write(arr)
+    writer.release()
+
+    out_dir = tmp_path / "output_video"
+    result = runner.invoke(
+        app,
+        [
+            "stitch",
+            "-o",
+            str(out_dir),
+            "--motion-mode",
+            "translation",
+            "--quiet",
+            "video",
+            "--start",
+            "0",
+            "--duration",
+            "3",
+            str(video_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (out_dir / "test_pan_top1.png").exists()

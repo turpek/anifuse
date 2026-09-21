@@ -10,6 +10,8 @@ from typing import Self
 import anicrop
 from anicrop.enums import ImageFormat
 from anicrop.image import Image
+from aniseek import Direction
+from aniseek import VideoReader as AniseekVideoReader
 
 from anifuse.interfaces.reader import (
     Frame,
@@ -182,3 +184,60 @@ class ImageSequenceReader(FrameReader):
         return cls(
             selected_paths, reverse=reverse, strategy=strategy, image_format=image_format
         )
+
+
+class VideoReader(FrameReader):
+    """Video frame reader delegating decoding to aniseek and producing anicrop Image instances."""
+
+    def __init__(
+        self,
+        video: Path | str,
+        *,
+        indices: Sequence[int] | None = None,
+        start: int | float | str | None = None,
+        end: int | float | str | None = None,
+        step: int = 1,
+        reverse: bool = False,
+        buffersize: int = 15,
+        image_format: ImageFormat = ImageFormat.RGBA,
+    ) -> None:
+        self.video = Path(video)
+        self.image_format = image_format
+
+        direction = Direction.REVERSE if reverse else Direction.FORWARD
+        self._reader = AniseekVideoReader(
+            video=self.video,
+            start=start,
+            end=end,
+            step=step,
+            frames=list(indices) if indices is not None else None,
+            direction=direction,
+            buffersize=buffersize,
+        )
+
+    @property
+    def fps(self) -> float:
+        return float(self._reader.fps)
+
+    @property
+    def total_frames(self) -> int:
+        return int(self._reader.total_frames)
+
+    def __len__(self) -> int:
+        return len(self._reader)
+
+    def __iter__(self) -> Iterator[Frame]:
+        fps = self._reader.fps
+        with self._reader as reader:
+            while not reader.is_task_complete:
+                ret, frame_bgr = reader.read()
+                if not ret or frame_bgr is None:
+                    continue
+
+                frame_id = reader.frame_id if reader.frame_id is not None else 0
+                timestamp = (frame_id / fps) if fps > 0 else 0.0
+                img = Image.from_bgr(frame_bgr, target_format=self.image_format)
+                yield Frame(idx=frame_id, image=img, timestamp=timestamp)
+
+    def close(self) -> None:
+        self._reader.close()

@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pytest
 from anicrop.enums import ImageFormat
 from anicrop.image import Image
@@ -13,6 +15,7 @@ from anifuse.reader import (
     ImageSequenceReader,
     ListPathResolver,
     StreamReadStrategy,
+    VideoReader,
 )
 
 
@@ -199,3 +202,83 @@ def test_image_sequence_reader_sampling(
     actual_names = [p.name for p in reader._paths]
 
     assert actual_names == expected_names
+
+
+@pytest.fixture
+def synthetic_video_path(tmp_path: Path) -> Path:
+    """Generate a temporary synthetic 10-frame MP4 video for reader tests."""
+    video_path = tmp_path / "synthetic_test.mp4"
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(str(video_path), fourcc, 10.0, (32, 32))
+    for i in range(10):
+        frame = np.full((32, 32, 3), fill_value=i * 20, dtype=np.uint8)
+        writer.write(frame)
+    writer.release()
+    return video_path
+
+
+def test_video_reader_forward_reads_all_frames(synthetic_video_path: Path):
+    """Verify that VideoReader iterates over all frames in forward order and converts to Image."""
+    with VideoReader(synthetic_video_path) as reader:
+        frames = list(reader)
+
+    assert len(frames) == 10
+    assert [f.idx for f in frames] == list(range(10))
+    assert all(isinstance(f.image, Image) for f in frames)
+    assert all(f.image.format == ImageFormat.RGBA for f in frames)
+
+
+def test_video_reader_metadata_properties(synthetic_video_path: Path):
+    """Verify that VideoReader exposes fps, total_frames, and len accurately."""
+    with VideoReader(synthetic_video_path, start=2, end=7) as reader:
+        total = reader.total_frames
+        fps = reader.fps
+        count = len(reader)
+
+    assert total == 10
+    assert fps == 10.0
+    assert count == 5
+
+
+def test_video_reader_with_start_and_end(synthetic_video_path: Path):
+    """Verify that VideoReader bounds frame reading within [start, end)."""
+    with VideoReader(synthetic_video_path, start=2, end=6) as reader:
+        frames = list(reader)
+
+    assert len(frames) == 4
+    assert [f.idx for f in frames] == [2, 3, 4, 5]
+
+
+def test_video_reader_with_step(synthetic_video_path: Path):
+    """Verify that VideoReader steps over frames according to the step interval."""
+    with VideoReader(synthetic_video_path, start=0, end=6, step=2) as reader:
+        frames = list(reader)
+
+    assert len(frames) == 3
+    assert [f.idx for f in frames] == [0, 2, 4]
+
+
+def test_video_reader_with_explicit_indices(synthetic_video_path: Path):
+    """Verify that VideoReader decodes specifically requested arbitrary frame indices."""
+    with VideoReader(synthetic_video_path, indices=[1, 4, 7]) as reader:
+        frames = list(reader)
+
+    assert len(frames) == 3
+    assert [f.idx for f in frames] == [1, 4, 7]
+
+
+def test_video_reader_reverse(synthetic_video_path: Path):
+    """Verify that VideoReader yields frames in reverse order when reverse is True."""
+    with VideoReader(synthetic_video_path, start=2, end=5, reverse=True) as reader:
+        frames = list(reader)
+
+    assert len(frames) == 3
+    assert [f.idx for f in frames] == [4, 3, 2]
+
+
+def test_video_reader_timestamp_calculation(synthetic_video_path: Path):
+    """Verify that VideoReader calculates accurate timestamps based on frame index and fps."""
+    with VideoReader(synthetic_video_path, start=0, end=3) as reader:
+        frames = list(reader)
+
+    assert [round(f.timestamp, 2) for f in frames] == [0.0, 0.1, 0.2]

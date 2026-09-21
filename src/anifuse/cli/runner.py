@@ -21,6 +21,7 @@ from anifuse.cli.models import SourceType, StitchJob
 from anifuse.cli.naming import resolve_output_path
 from anifuse.interfaces.reader import FrameReader
 from anifuse.interfaces.stitcher import StackOrder
+from anifuse.interfaces.view_policy import AlignmentError
 from anifuse.reader import DirectoryPathResolver
 
 
@@ -47,7 +48,7 @@ class JobRunner:
             return self._run_image_job(job)
 
         if job.source.source_type == SourceType.VIDEO:
-            raise NotImplementedError("Execução de fontes de vídeo será implementada no módulo de vídeo.")
+            return self._run_video_job(job)
 
         raise ValueError(f"Tipo de fonte desconhecido: '{job.source.source_type}'")
 
@@ -68,8 +69,13 @@ class JobRunner:
                 )
                 continue
 
-            paths = self._execute_stitch(job, reader, target_name=dir_path.name)
-            saved_paths.extend(paths)
+            try:
+                paths = self._execute_stitch(job, reader, target_name=dir_path.name)
+                saved_paths.extend(paths)
+            except Exception as err:
+                self.console.print(
+                    f"[bold red]Erro ao processar diretório '{dir_path.name}':[/bold red] {err}"
+                )
 
         return saved_paths
 
@@ -86,7 +92,39 @@ class JobRunner:
             return []
 
         target_name = job.source.paths[0].parent.name or "composite"
-        return self._execute_stitch(job, reader, target_name=target_name)
+        try:
+            return self._execute_stitch(job, reader, target_name=target_name)
+        except Exception as err:
+            self.console.print(
+                f"[bold red]Erro ao processar imagens '{target_name}':[/bold red] {err}"
+            )
+            return []
+
+    def _run_video_job(self, job: StitchJob) -> list[Path]:
+        saved_paths: list[Path] = []
+        for video_path in job.source.paths:
+            if not video_path.is_file():
+                self.console.print(
+                    f"[yellow]Aviso: arquivo de vídeo não encontrado: '{video_path}'.[/yellow]"
+                )
+                continue
+
+            reader = ReaderFactory.create_for_path(job.source, video_path)
+            if len(reader) < 2:
+                self.console.print(
+                    f"[yellow]Menos de 2 frames selecionados ({len(reader)}) em '{video_path}'. Mínimo necessário: 2.[/yellow]"
+                )
+                continue
+
+            try:
+                paths = self._execute_stitch(job, reader, target_name=video_path.stem)
+                saved_paths.extend(paths)
+            except Exception as err:
+                self.console.print(
+                    f"[bold red]Erro ao processar vídeo '{video_path.name}':[/bold red] {err}"
+                )
+
+        return saved_paths
 
     def _execute_stitch(
         self,
@@ -117,16 +155,39 @@ class JobRunner:
                 progress.update(task, completed=current, total=total)
 
             stitcher = StitcherFactory.create(job, on_progress=on_progress)
-            result = stitcher.stitch(
-                reader,
-                stack_order=job.composition.stack_order,
-                effects=effects,
-                blend_mode=job.composition.blend_mode,
-                interp=job.composition.interp,
-                sections_cls=sections_cls,
-            )
+            stitch_error: AlignmentError | None = None
+            try:
+                result = stitcher.stitch(
+                    reader,
+                    stack_order=job.composition.stack_order,
+                    effects=effects,
+                    blend_mode=job.composition.blend_mode,
+                    interp=job.composition.interp,
+                    sections_cls=sections_cls,
+                )
+            except AlignmentError as err:
+                stitch_error = err
+                result = err.partial_result
+            finally:
+                reader.close()
 
-        return self._save_result(job, result, target_name)
+        if stitch_error is not None:
+            if stitch_error.aligned_count <= 1:
+                self.console.print(
+                    f"[bold yellow]Aviso:[/bold yellow] Alinhamento interrompido no frame {stitch_error.frame_idx} "
+                    f"por baixa confiança. Nenhum frame subsequente pôde ser alinhado. "
+                    f"O resultado de '{target_name}' contém apenas o frame inicial."
+                )
+            else:
+                self.console.print(
+                    f"[bold yellow]Aviso:[/bold yellow] Alinhamento interrompido no frame {stitch_error.frame_idx} "
+                    f"por baixa confiança (corte de cena). "
+                    f"Foram costurados {stitch_error.aligned_count} de {len(reader)} frames para '{target_name}'."
+                )
+
+        if result is not None:
+            return self._save_result(job, result, target_name)
+        return []
 
     def _save_result(
         self,

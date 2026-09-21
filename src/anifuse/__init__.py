@@ -60,6 +60,7 @@ from anifuse.reader import (
     ImageSequenceReader,
     ListPathResolver,
     StreamReadStrategy,
+    VideoReader,
 )
 from anifuse.stitcher import SceneStitcher
 from anifuse.view_policy import (
@@ -111,6 +112,7 @@ __all__ = [
     "TransformHandler",
     "TranslationHandler",
     "VerticalTranslationHandler",
+    "VideoReader",
     "ViewPolicy",
     "config",
     "create_accumulator",

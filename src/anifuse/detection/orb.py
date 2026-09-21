@@ -108,12 +108,14 @@ class _BaseOrbEstimator(Estimator):
         nbest: int | None = None,
         translation_metric: Callable[[np.ndarray], tuple[float, float]] = discrete_mode,
         fast_threshold: int = 10,
+        confidence_threshold: float = 0.25,
     ) -> None:
         self.max_features = max_features
         self.distance_threshold = distance_threshold
         self.nbest = nbest
         self.translation_metric = translation_metric
         self.fast_threshold = fast_threshold
+        self.confidence_threshold = confidence_threshold
 
         self._orb = cv2.ORB_create(  # type: ignore[attr-defined]
             nfeatures=max_features,
@@ -198,19 +200,14 @@ class _BaseOrbEstimator(Estimator):
         diff: np.ndarray,
         delx: float,
         dely: float,
-        valid_count: int,
+        total_matches: int,
     ) -> float:
-        """Calculate scale-independent motion confidence based on consensus and inlier volume."""
-        if len(diff) == 0:
+        """Calculate scale-independent motion confidence as inliers / max(1, total_matches)."""
+        if len(diff) == 0 or total_matches <= 0:
             return 0.0
-        min_required = 20
-        volume_factor = min(1.0, float(valid_count / float(min_required)))
         inliers = (np.abs(diff[:, 0] - delx) <= 2) & (np.abs(diff[:, 1] - dely) <= 2)
         inlier_count = float(np.sum(inliers))
-        consensus_factor = inlier_count / len(diff)
-        inlier_score = min(1.0, inlier_count / 20.0)
-        effective_consensus = max(consensus_factor, inlier_score)
-        return float(volume_factor * effective_consensus)
+        return float(inlier_count / max(1, total_matches))
 
 
 class OrbTranslationEstimator(_BaseOrbEstimator):
@@ -223,6 +220,7 @@ class OrbTranslationEstimator(_BaseOrbEstimator):
         nbest: int | None = None,
         translation_metric: Callable[[np.ndarray], tuple[float, float]] = discrete_mode,
         fast_threshold: int = 10,
+        confidence_threshold: float = 0.25,
     ) -> None:
         super().__init__(
             max_features=max_features,
@@ -230,6 +228,7 @@ class OrbTranslationEstimator(_BaseOrbEstimator):
             nbest=nbest,
             translation_metric=translation_metric,
             fast_threshold=fast_threshold,
+            confidence_threshold=confidence_threshold,
         )
 
     def estimate(
@@ -252,7 +251,7 @@ class OrbTranslationEstimator(_BaseOrbEstimator):
         diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
 
         delx, dely = self.translation_metric(diff)
-        confidence = self._calculate_confidence(diff, delx, dely, len(valid))
+        confidence = self._calculate_confidence(diff, delx, dely, len(matches))
 
         estimate = MotionEstimate(
             dx=delx,
@@ -277,6 +276,7 @@ class OrbTransformEstimator(_BaseOrbEstimator):
         rotate_threshold: float = 0.10,
         scale_threshold: float = 0.0010,
         fast_threshold: int = 10,
+        confidence_threshold: float = 0.25,
     ) -> None:
         super().__init__(
             max_features=max_features,
@@ -284,6 +284,7 @@ class OrbTransformEstimator(_BaseOrbEstimator):
             nbest=nbest,
             translation_metric=translation_metric,
             fast_threshold=fast_threshold,
+            confidence_threshold=confidence_threshold,
         )
         self.interp = interp
         self.rotate_threshold = rotate_threshold
@@ -312,14 +313,31 @@ class OrbTransformEstimator(_BaseOrbEstimator):
             -1, 1, 2
         )
 
-        matrix_inv, _ = cv2.estimateAffinePartial2D(pts1, pts2)
-        if matrix_inv is not None:
-            raw_scale = float(np.sqrt(np.linalg.det(matrix_inv[:2, :2])))
-            raw_angle = float(
-                np.arctan2(matrix_inv[1, 0], matrix_inv[0, 0]) * (180.0 / np.pi)
-            )
-        else:
-            raw_scale, raw_angle = 1.0, 0.0
+        matrix_inv, inliers = cv2.estimateAffinePartial2D(pts1, pts2)
+        if matrix_inv is None:
+            return MotionEstimate(confidence=0.0), Layer(incoming)
+
+        det = float(np.linalg.det(matrix_inv[:2, :2]))
+        if det <= 0.0:
+            return MotionEstimate(confidence=0.0), Layer(incoming)
+
+        raw_scale = float(np.sqrt(det))
+        if raw_scale < 0.05 or raw_scale > 15.0:
+            return MotionEstimate(confidence=0.0), Layer(incoming)
+
+        inlier_count = int(np.sum(inliers)) if inliers is not None else 0
+        confidence = float(inlier_count / max(1, len(matches)))
+
+        if confidence < self.confidence_threshold:
+            return MotionEstimate(
+                angle=0.0,
+                scale=1.0,
+                confidence=confidence,
+            ), Layer(incoming)
+
+        raw_angle = float(
+            np.arctan2(matrix_inv[1, 0], matrix_inv[0, 0]) * (180.0 / np.pi)
+        )
 
         has_rotation = abs(raw_angle) > self.rotate_threshold
         has_scale = abs(1.0 - raw_scale) > self.scale_threshold
@@ -399,32 +417,32 @@ class OrbTransformEstimator(_BaseOrbEstimator):
             diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
 
             delx, dely = self.translation_metric(diff)
-            confidence = self._calculate_confidence(diff, delx, dely, len(valid_r))
+            confidence_r = self._calculate_confidence(diff, delx, dely, len(matches_r))
 
             estimate = MotionEstimate(
                 dx=delx,
                 dy=dely,
                 angle=angle,
                 scale=scale,
-                confidence=confidence,
+                confidence=confidence_r,
             )
             return estimate, layer
 
-        # Single step (no significant transform): compute translation directly
+        # Single step (no significant transform): return initial translation estimate
         target_matches = self._select_match_pool(matches, valid)
         coords1 = [kp1[m.queryIdx].pt for m in target_matches]
         coords2 = [kp2[m.trainIdx].pt for m in target_matches]
         diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
 
         delx, dely = self.translation_metric(diff)
-        confidence = self._calculate_confidence(diff, delx, dely, len(valid))
+        confidence_trans = self._calculate_confidence(diff, delx, dely, len(matches))
 
         estimate = MotionEstimate(
             dx=delx,
             dy=dely,
             angle=0.0,
             scale=1.0,
-            confidence=confidence,
+            confidence=confidence_trans,
         )
         return estimate, Layer(incoming)
 
@@ -445,6 +463,7 @@ class OrbRotationEstimator(_BaseOrbEstimator):
         rotate_threshold: float = 0.10,
         scale_threshold: float = 0.0010,
         fast_threshold: int = 10,
+        confidence_threshold: float = 0.25,
     ) -> None:
         super().__init__(
             max_features=max_features,
@@ -452,6 +471,7 @@ class OrbRotationEstimator(_BaseOrbEstimator):
             nbest=nbest,
             translation_metric=translation_metric,
             fast_threshold=fast_threshold,
+            confidence_threshold=confidence_threshold,
         )
         self.interp = interp
         self.rotate_threshold = rotate_threshold
@@ -480,14 +500,31 @@ class OrbRotationEstimator(_BaseOrbEstimator):
             -1, 1, 2
         )
 
-        matrix_inv, _ = cv2.estimateAffinePartial2D(pts1, pts2)
-        if matrix_inv is not None:
-            raw_scale = float(np.sqrt(np.linalg.det(matrix_inv[:2, :2])))
-            raw_angle = float(
-                np.arctan2(matrix_inv[1, 0], matrix_inv[0, 0]) * (180.0 / np.pi)
-            )
-        else:
-            raw_scale, raw_angle = 1.0, 0.0
+        matrix_inv, inliers = cv2.estimateAffinePartial2D(pts1, pts2)
+        if matrix_inv is None:
+            return MotionEstimate(confidence=0.0), Layer(incoming)
+
+        det = float(np.linalg.det(matrix_inv[:2, :2]))
+        if det <= 0.0:
+            return MotionEstimate(confidence=0.0), Layer(incoming)
+
+        raw_scale = float(np.sqrt(det))
+        if raw_scale < 0.05 or raw_scale > 15.0:
+            return MotionEstimate(confidence=0.0), Layer(incoming)
+
+        inlier_count = int(np.sum(inliers)) if inliers is not None else 0
+        confidence = float(inlier_count / max(1, len(matches)))
+
+        if confidence < self.confidence_threshold:
+            return MotionEstimate(
+                angle=0.0,
+                scale=1.0,
+                confidence=confidence,
+            ), Layer(incoming)
+
+        raw_angle = float(
+            np.arctan2(matrix_inv[1, 0], matrix_inv[0, 0]) * (180.0 / np.pi)
+        )
 
         has_rotation = abs(raw_angle) > self.rotate_threshold
         has_scale = abs(1.0 - raw_scale) > self.scale_threshold
@@ -546,14 +583,14 @@ class OrbRotationEstimator(_BaseOrbEstimator):
             diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
 
             delx, dely = self.translation_metric(diff)
-            confidence = self._calculate_confidence(diff, delx, dely, len(valid_r))
+            confidence_r = self._calculate_confidence(diff, delx, dely, len(matches_r))
 
             estimate = MotionEstimate(
                 dx=delx,
                 dy=dely,
                 angle=angle,
                 scale=scale,
-                confidence=confidence,
+                confidence=confidence_r,
             )
             return estimate, layer
 
@@ -564,14 +601,14 @@ class OrbRotationEstimator(_BaseOrbEstimator):
         diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
 
         delx, dely = self.translation_metric(diff)
-        confidence = self._calculate_confidence(diff, delx, dely, len(valid))
+        confidence_trans = self._calculate_confidence(diff, delx, dely, len(matches))
 
         estimate = MotionEstimate(
             dx=delx,
             dy=dely,
             angle=0.0,
             scale=1.0,
-            confidence=confidence,
+            confidence=confidence_trans,
         )
         return estimate, Layer(incoming)
 
@@ -592,6 +629,7 @@ class OrbScaleEstimator(_BaseOrbEstimator):
         interp: InterpMode = InterpMode.LANCZOS,
         scale_threshold: float = 0.0010,
         fast_threshold: int = 10,
+        confidence_threshold: float = 0.25,
     ) -> None:
         super().__init__(
             max_features=max_features,
@@ -599,6 +637,7 @@ class OrbScaleEstimator(_BaseOrbEstimator):
             nbest=nbest,
             translation_metric=translation_metric,
             fast_threshold=fast_threshold,
+            confidence_threshold=confidence_threshold,
         )
         self.interp = interp
         self.scale_threshold = scale_threshold
@@ -626,11 +665,27 @@ class OrbScaleEstimator(_BaseOrbEstimator):
             -1, 1, 2
         )
 
-        matrix_inv, _ = cv2.estimateAffinePartial2D(pts1, pts2)
-        if matrix_inv is not None:
-            raw_scale = float(np.sqrt(np.linalg.det(matrix_inv[:2, :2])))
-        else:
-            raw_scale = 1.0
+        matrix_inv, inliers = cv2.estimateAffinePartial2D(pts1, pts2)
+        if matrix_inv is None:
+            return MotionEstimate(confidence=0.0), Layer(incoming)
+
+        det = float(np.linalg.det(matrix_inv[:2, :2]))
+        if det <= 0.0:
+            return MotionEstimate(confidence=0.0), Layer(incoming)
+
+        raw_scale = float(np.sqrt(det))
+        if raw_scale < 0.05 or raw_scale > 15.0:
+            return MotionEstimate(confidence=0.0), Layer(incoming)
+
+        inlier_count = int(np.sum(inliers)) if inliers is not None else 0
+        confidence = float(inlier_count / max(1, len(matches)))
+
+        if confidence < self.confidence_threshold:
+            return MotionEstimate(
+                angle=0.0,
+                scale=1.0,
+                confidence=confidence,
+            ), Layer(incoming)
 
         has_scale = abs(1.0 - raw_scale) > self.scale_threshold
         scale = raw_scale if has_scale else 1.0
@@ -672,14 +727,14 @@ class OrbScaleEstimator(_BaseOrbEstimator):
             diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
 
             delx, dely = self.translation_metric(diff)
-            confidence = self._calculate_confidence(diff, delx, dely, len(valid_s))
+            confidence_s = self._calculate_confidence(diff, delx, dely, len(matches_s))
 
             estimate = MotionEstimate(
                 dx=delx,
                 dy=dely,
                 angle=0.0,
                 scale=scale,
-                confidence=confidence,
+                confidence=confidence_s,
             )
             return estimate, layer
 
@@ -690,13 +745,13 @@ class OrbScaleEstimator(_BaseOrbEstimator):
         diff = np.array(coords2, dtype=int) - np.array(coords1, dtype=int)
 
         delx, dely = self.translation_metric(diff)
-        confidence = self._calculate_confidence(diff, delx, dely, len(valid))
+        confidence_trans = self._calculate_confidence(diff, delx, dely, len(matches))
 
         estimate = MotionEstimate(
             dx=delx,
             dy=dely,
             angle=0.0,
             scale=1.0,
-            confidence=confidence,
+            confidence=confidence_trans,
         )
         return estimate, Layer(incoming)
