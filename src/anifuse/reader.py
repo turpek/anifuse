@@ -205,8 +205,8 @@ class VideoReader(FrameReader):
         self.image_format = image_format
 
         direction = Direction.REVERSE if reverse else Direction.FORWARD
-        self._reader = AniseekVideoReader(
-            video=self.video,
+        self._reader = AniseekVideoReader.from_default(
+            path=self.video,
             start=start,
             end=end,
             step=step,
