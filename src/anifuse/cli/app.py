@@ -278,12 +278,17 @@ def stitch_dir_cmd(
         int,
         typer.Option("--batch-size", help="Tamanho do lote de leitura em memória."),
     ] = 15,
+    backend: Annotated[
+        str,
+        typer.Option("--backend", help="Backend de decodificação de imagem: opencv ou vips."),
+    ] = "opencv",
 ) -> None:
     """Funde cenas panorâmicas a partir de um ou mais diretórios de imagens."""
     motion, composition, effects, output = ctx.obj
     source = SourceConfig(
         source_type=SourceType.DIR,
         paths=tuple(dirs),
+        backend=backend,
         start=start,
         frames=frames,
         step=step,
@@ -340,12 +345,17 @@ def stitch_image_cmd(
         int,
         typer.Option("--batch-size", help="Tamanho do lote de leitura em memória."),
     ] = 15,
+    backend: Annotated[
+        str,
+        typer.Option("--backend", help="Backend de decodificação de imagem: opencv ou vips."),
+    ] = "opencv",
 ) -> None:
     """Funde cenas panorâmicas a partir de uma lista explícita de arquivos de imagem."""
     motion, composition, effects, output = ctx.obj
     source = SourceConfig(
         source_type=SourceType.IMAGE,
         paths=tuple(images),
+        backend=backend,
         start=start,
         frames=frames,
         step=step,

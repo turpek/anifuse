@@ -225,6 +225,15 @@ def test_video_reader_forward_reads_all_frames(synthetic_video_path: Path):
     assert len(frames) == 10
     assert [f.idx for f in frames] == list(range(10))
     assert all(isinstance(f.image, Image) for f in frames)
+    assert all(f.image.format == ImageFormat.BGRA for f in frames)
+
+
+def test_video_reader_custom_image_format(synthetic_video_path: Path):
+    """Verify that VideoReader produces images matching the requested image_format."""
+    with VideoReader(synthetic_video_path, start=0, end=2, image_format=ImageFormat.RGBA) as reader:
+        frames = list(reader)
+
+    assert len(frames) == 2
     assert all(f.image.format == ImageFormat.RGBA for f in frames)
 
 
