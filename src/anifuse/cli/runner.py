@@ -63,19 +63,22 @@ class JobRunner:
                 continue
 
             reader = ReaderFactory.create_for_path(job.source, dir_path)
-            if len(reader) < 2:
-                self.console.print(
-                    f"[yellow]Menos de 2 frames selecionados ({len(reader)}) em '{dir_path}'. Mínimo necessário: 2.[/yellow]"
-                )
-                continue
-
             try:
-                paths = self._execute_stitch(job, reader, target_name=dir_path.name)
-                saved_paths.extend(paths)
-            except Exception as err:
-                self.console.print(
-                    f"[bold red]Erro ao processar diretório '{dir_path.name}':[/bold red] {err}"
-                )
+                if len(reader) < 2:
+                    self.console.print(
+                        f"[yellow]Menos de 2 frames selecionados ({len(reader)}) em '{dir_path}'. Mínimo necessário: 2.[/yellow]"
+                    )
+                    continue
+
+                try:
+                    paths = self._execute_stitch(job, reader, target_name=dir_path.name)
+                    saved_paths.extend(paths)
+                except Exception as err:
+                    self.console.print(
+                        f"[bold red]Erro ao processar diretório '{dir_path.name}':[/bold red] {err}"
+                    )
+            finally:
+                reader.close()
 
         return saved_paths
 
@@ -85,20 +88,23 @@ class JobRunner:
             return []
 
         reader = ReaderFactory.create(job.source)
-        if len(reader) < 2:
-            self.console.print(
-                f"[yellow]Menos de 2 frames selecionados ({len(reader)}). Mínimo necessário: 2.[/yellow]"
-            )
-            return []
-
-        target_name = job.source.paths[0].parent.name or "composite"
         try:
-            return self._execute_stitch(job, reader, target_name=target_name)
-        except Exception as err:
-            self.console.print(
-                f"[bold red]Erro ao processar imagens '{target_name}':[/bold red] {err}"
-            )
-            return []
+            if len(reader) < 2:
+                self.console.print(
+                    f"[yellow]Menos de 2 frames selecionados ({len(reader)}). Mínimo necessário: 2.[/yellow]"
+                )
+                return []
+
+            target_name = job.source.paths[0].parent.name or "composite"
+            try:
+                return self._execute_stitch(job, reader, target_name=target_name)
+            except Exception as err:
+                self.console.print(
+                    f"[bold red]Erro ao processar imagens '{target_name}':[/bold red] {err}"
+                )
+                return []
+        finally:
+            reader.close()
 
     def _run_video_job(self, job: StitchJob) -> list[Path]:
         saved_paths: list[Path] = []
@@ -110,19 +116,22 @@ class JobRunner:
                 continue
 
             reader = ReaderFactory.create_for_path(job.source, video_path)
-            if len(reader) < 2:
-                self.console.print(
-                    f"[yellow]Menos de 2 frames selecionados ({len(reader)}) em '{video_path}'. Mínimo necessário: 2.[/yellow]"
-                )
-                continue
-
             try:
-                paths = self._execute_stitch(job, reader, target_name=video_path.stem)
-                saved_paths.extend(paths)
-            except Exception as err:
-                self.console.print(
-                    f"[bold red]Erro ao processar vídeo '{video_path.name}':[/bold red] {err}"
-                )
+                if len(reader) < 2:
+                    self.console.print(
+                        f"[yellow]Menos de 2 frames selecionados ({len(reader)}) em '{video_path}'. Mínimo necessário: 2.[/yellow]"
+                    )
+                    continue
+
+                try:
+                    paths = self._execute_stitch(job, reader, target_name=video_path.stem)
+                    saved_paths.extend(paths)
+                except Exception as err:
+                    self.console.print(
+                        f"[bold red]Erro ao processar vídeo '{video_path.name}':[/bold red] {err}"
+                    )
+            finally:
+                reader.close()
 
         return saved_paths
 

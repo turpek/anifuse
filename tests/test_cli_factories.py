@@ -7,6 +7,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
+from anicrop.enums import ImageFormat
 
 from anifuse.cli.factories import (
     EffectFactory,
@@ -250,6 +251,43 @@ def test_reader_factory_creates_video_reader(tmp_path: Path):
 
     assert isinstance(reader, VideoReader)
     reader.close()
+
+
+@pytest.mark.parametrize(
+    ("backend", "expected_format"),
+    [
+        ("opencv", ImageFormat.BGRA),
+        ("vips", ImageFormat.RGBA),
+    ],
+    ids=["opencv_bgra", "vips_rgba"],
+)
+def test_reader_factory_resolves_image_format_from_backend(
+    backend: str, expected_format: ImageFormat
+):
+    """Verify ReaderFactory resolves correct image format according to backend."""
+    resolved = ReaderFactory.resolve_image_format(backend)
+
+    assert resolved == expected_format
+
+
+def test_reader_factory_injects_backend_image_format_into_reader(tmp_path: Path):
+    """Verify ReaderFactory injects backend-specific image_format into ImageSequenceReader."""
+    (tmp_path / "img1.png").write_bytes(b"dummy")
+    (tmp_path / "img2.png").write_bytes(b"dummy")
+
+    source_vips = SourceConfig(
+        source_type=SourceType.DIR, paths=(tmp_path,), backend="vips"
+    )
+    reader_vips = ReaderFactory.create(source_vips)
+    assert isinstance(reader_vips, ImageSequenceReader)
+    assert reader_vips.image_format == ImageFormat.RGBA
+
+    source_cv = SourceConfig(
+        source_type=SourceType.DIR, paths=(tmp_path,), backend="opencv"
+    )
+    reader_cv = ReaderFactory.create(source_cv)
+    assert isinstance(reader_cv, ImageSequenceReader)
+    assert reader_cv.image_format == ImageFormat.BGRA
 
 
 @pytest.mark.parametrize(

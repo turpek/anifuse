@@ -7,7 +7,6 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Self
 
-import anicrop
 from anicrop.enums import ImageFormat
 from anicrop.image import Image
 from aniseek import Direction
@@ -106,17 +105,12 @@ class ImageSequenceReader(FrameReader):
         paths: Sequence[Path],
         reverse: bool = False,
         strategy: ReadStrategy | None = None,
-        image_format: ImageFormat = ImageFormat.RGBA,
+        image_format: ImageFormat = ImageFormat.BGRA,
     ) -> None:
         """Initialize reader with normalized paths, reading strategy, and direction."""
         self._paths: list[Path] = list(reversed(paths)) if reverse else list(paths)
         self.image_format = image_format
-        self.strategy = strategy if strategy is not None else self._default_strategy()
-
-    def _default_strategy(self) -> ReadStrategy:
-        if anicrop.config.backend == "vips":
-            return StreamReadStrategy()
-        return BatchedReadStrategy()
+        self.strategy = strategy if strategy is not None else BatchedReadStrategy()
 
     def __len__(self) -> int:
         """Return total number of frames in the sequence."""
@@ -136,7 +130,7 @@ class ImageSequenceReader(FrameReader):
         step: int = 1,
         reverse: bool = False,
         strategy: ReadStrategy | None = None,
-        image_format: ImageFormat = ImageFormat.RGBA,
+        image_format: ImageFormat = ImageFormat.BGRA,
     ) -> Self:
         """Construct reader by resolving image files discovered in a directory with frame sampling.
 
@@ -165,7 +159,7 @@ class ImageSequenceReader(FrameReader):
         step: int = 1,
         reverse: bool = False,
         strategy: ReadStrategy | None = None,
-        image_format: ImageFormat = ImageFormat.RGBA,
+        image_format: ImageFormat = ImageFormat.BGRA,
     ) -> Self:
         """Construct reader by resolving an explicit list of paths with frame sampling.
 
@@ -199,7 +193,7 @@ class VideoReader(FrameReader):
         step: int = 1,
         reverse: bool = False,
         buffersize: int = 15,
-        image_format: ImageFormat = ImageFormat.RGBA,
+        image_format: ImageFormat = ImageFormat.BGRA,
     ) -> None:
         self.video = Path(video)
         self.image_format = image_format
@@ -236,7 +230,9 @@ class VideoReader(FrameReader):
 
                 frame_id = reader.frame_id if reader.frame_id is not None else 0
                 timestamp = (frame_id / fps) if fps > 0 else 0.0
-                img = Image.from_bgr(frame_bgr, target_format=self.image_format)
+                img = Image(frame_bgr, ImageFormat.BGR)
+                if img.format != self.image_format:
+                    img = img.to_format(self.image_format)
                 yield Frame(idx=frame_id, image=img, timestamp=timestamp)
 
     def close(self) -> None:

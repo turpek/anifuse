@@ -178,6 +178,7 @@ class SourceConfig:
 
     source_type: SourceType = SourceType.DIR
     paths: tuple[Path, ...] = ()
+    backend: str = "opencv"
     start: int | float | str | None = 0
     end: int | float | str | None = None
     duration: int | float | str | None = None

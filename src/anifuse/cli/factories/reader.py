@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+from anicrop.enums import ImageFormat
 from aniseek.time_utils import time_to_seconds
 
 from anifuse.cli.models import ReadStrategyType, SourceConfig, SourceType
@@ -17,12 +17,16 @@ from anifuse.reader import (
     VideoReader,
 )
 
-if TYPE_CHECKING:
-    pass
-
 
 class ReaderFactory:
     """Factory responsible for instantiating FrameReader implementations from source configuration."""
+
+    @staticmethod
+    def resolve_image_format(backend: str) -> ImageFormat:
+        """Resolve expected ImageFormat based on backend engine."""
+        if backend.lower() == "vips":
+            return ImageFormat.RGBA
+        return ImageFormat.BGRA
 
     @staticmethod
     def create_strategy(source: SourceConfig) -> ReadStrategy:
@@ -56,6 +60,7 @@ class ReaderFactory:
     def create_for_path(cls, source: SourceConfig, target_path: Path) -> FrameReader:
         """Create a FrameReader for a single target directory or media file."""
         strategy = cls.create_strategy(source)
+        image_format = cls.resolve_image_format(source.backend)
 
         if source.source_type == SourceType.DIR:
             start_idx = source.start if isinstance(source.start, int) else 0
@@ -66,6 +71,7 @@ class ReaderFactory:
                 step=source.step,
                 reverse=source.reverse,
                 strategy=strategy,
+                image_format=image_format,
             )
 
         if source.source_type == SourceType.VIDEO:
@@ -82,6 +88,7 @@ class ReaderFactory:
                 step=source.step,
                 reverse=source.reverse,
                 buffersize=source.batch_size,
+                image_format=image_format,
             )
             has_timestamp = isinstance(source.start, (str, float)) or isinstance(source.end, (str, float))
             if has_timestamp and source.indices is None:
@@ -94,6 +101,7 @@ class ReaderFactory:
     def create(cls, source: SourceConfig) -> FrameReader:
         """Create a FrameReader from the configured source specifications."""
         strategy = cls.create_strategy(source)
+        image_format = cls.resolve_image_format(source.backend)
 
         if source.source_type == SourceType.IMAGE:
             if not source.paths:
@@ -106,6 +114,7 @@ class ReaderFactory:
                 step=source.step,
                 reverse=source.reverse,
                 strategy=strategy,
+                image_format=image_format,
             )
 
         if source.source_type == SourceType.DIR:
