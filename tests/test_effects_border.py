@@ -22,6 +22,8 @@ from anifuse.stitcher import SceneStitcher
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
+    from anicrop.cache import AbstractLayerCache
+
 
 def _create_solid_layer(color: tuple[int, int, int, int], x: float = 0, y: float = 0) -> Layer:
     arr = np.full((100, 100, 4), color, dtype=np.uint8)
@@ -49,14 +51,15 @@ class _MockViewPolicy(ViewPolicy):
 
     def resolve(
         self,
-        base: Image,
-        incoming: Image,
+        base: Layer,
+        incoming: Layer,
         sections: Iterable[Section],
+        cache: AbstractLayerCache,
         frame_idx: int = 0,
-    ) -> tuple[AlignmentResult, Layer]:
+    ) -> AlignmentResult:
         first_section = next(iter(sections))
         motion = MotionEstimate(dx=self.dx, dy=self.dy, confidence=0.99)
-        return AlignmentResult(ref=first_section.ref, motion=motion), Layer(incoming)
+        return AlignmentResult(ref=first_section.ref, motion=motion)
 
 
 def test_border_cut_auto_detects_left_edge_on_positive_dx():

@@ -9,6 +9,7 @@ from types import EllipsisType
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from anicrop.cache import AbstractLayerCache
     from anicrop.image import Image
     from anicrop.layer import Layer
     from anicrop.spatial import Region
@@ -56,11 +57,12 @@ class ViewPolicy(ABC):
     @abstractmethod
     def resolve(
         self,
-        base: Image,
-        incoming: Image,
+        base: Layer,
+        incoming: Layer,
         sections: Iterable[Section],
+        cache: AbstractLayerCache,
         frame_idx: int = 0,
-    ) -> tuple[AlignmentResult, Layer]:
+    ) -> AlignmentResult:
         """Evaluate candidate sections, apply mask to incoming, and estimate motion."""
         pass
 

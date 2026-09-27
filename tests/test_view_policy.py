@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from anicrop.cache import AbstractLayerCache, LayerCache
 from anicrop.enums import ImageFormat
 from anicrop.image import Image
+from anicrop.layer import Layer
 from anicrop.spatial import Region
 
 from anifuse.interfaces import (
@@ -35,9 +37,10 @@ class _MockEstimator(Estimator):
     def estimate(
         self,
         ref: Image,
-        incoming: Image,
+        layer: Layer,
+        cache: AbstractLayerCache,
         mask: np.ndarray | None = None,
-    ) -> tuple[MotionEstimate, Image]:
+    ) -> MotionEstimate:
         self.last_mask = mask
         conf = (
             self.confidences[self.call_count]
@@ -45,7 +48,13 @@ class _MockEstimator(Estimator):
             else 0.0
         )
         self.call_count += 1
-        return MotionEstimate(dx=10.0, dy=5.0, confidence=conf), incoming
+        return MotionEstimate(dx=10.0, dy=5.0, confidence=conf)
+
+
+@pytest.fixture
+def cache() -> LayerCache:
+    """Return a fresh LayerCache instance for testing."""
+    return LayerCache()
 
 
 @pytest.fixture
@@ -60,6 +69,18 @@ def incoming_image() -> Image:
     """Return a 500x500 synthetic incoming frame Image."""
     arr = np.zeros((500, 500, 3), dtype=np.uint8)
     return Image(arr, ImageFormat.RGB)
+
+
+@pytest.fixture
+def canvas_layer(canvas_image: Image) -> Layer:
+    """Return a Layer wrapping the canvas image."""
+    return Layer(canvas_image)
+
+
+@pytest.fixture
+def incoming_layer(incoming_image: Image) -> Layer:
+    """Return a Layer wrapping the incoming image."""
+    return Layer(incoming_image)
 
 
 def test_cross_sections_with_ellipsis_yields_full_canvas():
@@ -114,7 +135,7 @@ def test_cross_sections_sweeps_entire_canvas_grid():
 
 
 def test_adaptive_view_policy_returns_first_section_passing_threshold(
-    canvas_image: Image, incoming_image: Image
+    canvas_layer: Layer, incoming_layer: Layer, cache: LayerCache
 ):
     """Verify that AdaptiveViewPolicy returns immediately on first section meeting threshold."""
     estimator = _MockEstimator(confidences=[0.85, 0.90])
@@ -122,17 +143,15 @@ def test_adaptive_view_policy_returns_first_section_passing_threshold(
     sec1 = Section(Region.from_rect(0, 0, 200, 200), Region.from_rect(0, 0, 200, 200))
     sec2 = Section(Region.from_rect(200, 0, 200, 200), Region.from_rect(200, 0, 200, 200))
 
-    alignment, ready_image = policy.resolve(canvas_image, incoming_image, [sec1, sec2])
+    alignment = policy.resolve(canvas_layer, incoming_layer, [sec1, sec2], cache=cache)
 
     assert isinstance(alignment, AlignmentResult)
     assert alignment.ref == sec1.ref
-    assert isinstance(ready_image, Image)
-    assert ready_image is incoming_image
     assert estimator.call_count == 1
 
 
 def test_adaptive_view_policy_evaluates_subsequent_sections_if_first_fails(
-    canvas_image: Image, incoming_image: Image
+    canvas_layer: Layer, incoming_layer: Layer, cache: LayerCache
 ):
     """Verify that AdaptiveViewPolicy evaluates second section if first fails threshold."""
     estimator = _MockEstimator(confidences=[0.10, 0.85])
@@ -140,16 +159,14 @@ def test_adaptive_view_policy_evaluates_subsequent_sections_if_first_fails(
     sec1 = Section(Region.from_rect(0, 0, 200, 200), Region.from_rect(0, 0, 200, 200))
     sec2 = Section(Region.from_rect(200, 0, 200, 200), Region.from_rect(200, 0, 200, 200))
 
-    alignment, ready_image = policy.resolve(canvas_image, incoming_image, [sec1, sec2])
+    alignment = policy.resolve(canvas_layer, incoming_layer, [sec1, sec2], cache=cache)
 
     assert alignment.ref == sec2.ref
-    assert isinstance(ready_image, Image)
-    assert ready_image is incoming_image
     assert estimator.call_count == 2
 
 
 def test_adaptive_view_policy_raises_alignment_error_when_no_section_passes(
-    canvas_image: Image, incoming_image: Image
+    canvas_layer: Layer, incoming_layer: Layer, cache: LayerCache
 ):
     """Verify that AdaptiveViewPolicy raises AlignmentError when all candidate sections fail threshold."""
     estimator = _MockEstimator(confidences=[0.10, 0.05])
@@ -158,11 +175,11 @@ def test_adaptive_view_policy_raises_alignment_error_when_no_section_passes(
     sec2 = Section(Region.from_rect(200, 0, 200, 200), Region.from_rect(200, 0, 200, 200))
 
     with pytest.raises(AlignmentError):
-        policy.resolve(canvas_image, incoming_image, [sec1, sec2], frame_idx=7)
+        policy.resolve(canvas_layer, incoming_layer, [sec1, sec2], cache=cache, frame_idx=7)
 
 
 def test_adaptive_view_policy_passes_mask_to_estimator(
-    canvas_image: Image, incoming_image: Image
+    canvas_layer: Layer, incoming_layer: Layer, cache: LayerCache
 ):
     """Verify that configured MaskView passes mask array to estimator."""
     mask_arr = np.ones((500, 500), dtype=np.uint8)
@@ -171,7 +188,7 @@ def test_adaptive_view_policy_passes_mask_to_estimator(
     policy = AdaptiveViewPolicy(estimator=estimator, mask_view=mask_view)
     sec = Section(Region.from_rect(0, 0, 200, 200), Region.from_rect(0, 0, 200, 200))
 
-    policy.resolve(canvas_image, incoming_image, [sec])
+    policy.resolve(canvas_layer, incoming_layer, [sec], cache=cache)
 
     assert estimator.last_mask is mask_arr
 

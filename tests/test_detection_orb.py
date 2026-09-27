@@ -4,8 +4,10 @@ import cv2
 import numpy as np
 import pytest
 from anicrop import Layer, transform_image
+from anicrop.cache import LayerCache
 from anicrop.enums import ImageFormat
 from anicrop.image import Image
+from anicrop.spatial import Region
 
 from anifuse.detection import (
     OrbRotationEstimator,
@@ -15,7 +17,8 @@ from anifuse.detection import (
     discrete_mode,
     resize_image,
 )
-from anifuse.interfaces import MotionEstimate
+from anifuse.handlers import RotationHandler, ScaleHandler
+from anifuse.interfaces import AlignmentResult, MotionEstimate
 
 
 @pytest.fixture
@@ -30,6 +33,12 @@ def synthetic_pattern_frame() -> Image:
             img, f"K{i}", (x + 5, y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2
         )
     return Image(img, ImageFormat.RGB)
+
+
+@pytest.fixture
+def cache() -> LayerCache:
+    """Return a fresh LayerCache instance for testing."""
+    return LayerCache()
 
 
 def test_discrete_mode_calculates_dominant_values():
@@ -52,7 +61,9 @@ def test_discrete_mode_returns_zeros_on_empty_input():
     assert dely == 0.0
 
 
-def test_orb_translation_estimator_detects_shift(synthetic_pattern_frame: Image):
+def test_orb_translation_estimator_detects_shift(
+    synthetic_pattern_frame: Image, cache: LayerCache
+):
     """Verify that OrbTranslationEstimator detects a pure 2D translation offset."""
     arr = synthetic_pattern_frame[...]
     h, w = arr.shape[:2]
@@ -60,32 +71,32 @@ def test_orb_translation_estimator_detects_shift(synthetic_pattern_frame: Image)
     shifted_arr = np.zeros_like(arr)
     shifted_arr[0: h + shift_y, shift_x:w] = arr[-shift_y:h, 0: w - shift_x]
     shifted_frame = Image(shifted_arr, synthetic_pattern_frame.format)
+    shifted_layer = Layer(shifted_frame)
 
     estimator = OrbTranslationEstimator(max_features=1000)
-    estimate, returned_frame = estimator.estimate(synthetic_pattern_frame, shifted_frame)
+    estimate = estimator.estimate(synthetic_pattern_frame, shifted_layer, cache=cache)
 
     assert isinstance(estimate, MotionEstimate)
-    assert isinstance(returned_frame, Layer)
-    assert returned_frame.edits[0].image is shifted_frame
     assert estimate.dx == pytest.approx(shift_x, abs=2.0)
     assert estimate.dy == pytest.approx(shift_y, abs=2.0)
 
 
-def test_orb_translation_estimator_returns_zero_confidence_on_blank_frames():
+def test_orb_translation_estimator_returns_zero_confidence_on_blank_frames(
+    cache: LayerCache,
+):
     """Verify that OrbTranslationEstimator returns zero confidence when no keypoints exist."""
     blank_ref = Image.new((100, 100), ImageFormat.RGB)
-    blank_incoming = Image.new((100, 100), ImageFormat.RGB)
+    blank_layer = Layer(Image.new((100, 100), ImageFormat.RGB))
 
     estimator = OrbTranslationEstimator()
-    estimate, returned_frame = estimator.estimate(blank_ref, blank_incoming)
+    estimate = estimator.estimate(blank_ref, blank_layer, cache=cache)
 
     assert estimate.confidence == 0.0
-    assert isinstance(returned_frame, Layer)
-    assert returned_frame.edits[0].image is blank_incoming
 
 
 def test_orb_transform_estimator_detects_pure_translation(
     synthetic_pattern_frame: Image,
+    cache: LayerCache,
 ):
     """Verify that OrbTransformEstimator detects translation without triggering rotation."""
     arr = synthetic_pattern_frame[...]
@@ -94,43 +105,51 @@ def test_orb_transform_estimator_detects_pure_translation(
     shifted_arr = np.zeros_like(arr)
     shifted_arr[shift_y:h, shift_x:w] = arr[0: h - shift_y, 0: w - shift_x]
     shifted_frame = Image(shifted_arr, synthetic_pattern_frame.format)
+    shifted_layer = Layer(shifted_frame)
 
     estimator = OrbTransformEstimator(max_features=1000)
-    estimate, returned_frame = estimator.estimate(synthetic_pattern_frame, shifted_frame)
+    estimate = estimator.estimate(synthetic_pattern_frame, shifted_layer, cache=cache)
 
     assert isinstance(estimate, MotionEstimate)
-    assert isinstance(returned_frame, Layer)
     assert estimate.dx == pytest.approx(shift_x, abs=2.0)
     assert estimate.dy == pytest.approx(shift_y, abs=2.0)
 
 
 def test_orb_transform_estimator_detects_rotation_and_prealigns_frame(
     synthetic_pattern_frame: Image,
+    cache: LayerCache,
 ):
     """Verify that OrbTransformEstimator triggers 2-stage alignment when rotation is present."""
     rotated_frame = transform_image(synthetic_pattern_frame, angle=5.0)
+    layer = Layer(rotated_frame)
 
     estimator = OrbTransformEstimator(max_features=2000)
-    estimate, returned_frame = estimator.estimate(synthetic_pattern_frame, rotated_frame)
+    estimate = estimator.estimate(synthetic_pattern_frame, layer, cache=cache)
 
     assert isinstance(estimate, MotionEstimate)
-    assert isinstance(returned_frame, Layer)
     assert estimate.confidence > 0.0
     assert abs(estimate.angle) == pytest.approx(5.0, abs=1.0)
     assert estimate.scale == pytest.approx(1.0, abs=0.05)
 
+    alignment = AlignmentResult(Region.from_size(10, 10), estimate)
+    ScaleHandler().apply(layer, alignment)
+    RotationHandler().apply(layer, alignment)
+    assert not cache.is_dirty(layer)
+
 
 def test_orb_translation_estimator_respects_mask(
     synthetic_pattern_frame: Image,
+    cache: LayerCache,
 ):
     """Verify that OrbTranslationEstimator detects zero features when mask is all zeros."""
     mask = np.zeros(
         (synthetic_pattern_frame.height, synthetic_pattern_frame.width), dtype=np.uint8
     )
+    layer = Layer(synthetic_pattern_frame)
 
     estimator = OrbTranslationEstimator(max_features=1000)
-    estimate, _ = estimator.estimate(
-        synthetic_pattern_frame, synthetic_pattern_frame, mask=mask
+    estimate = estimator.estimate(
+        synthetic_pattern_frame, layer, cache=cache, mask=mask
     )
 
     assert estimate.confidence == 0.0
@@ -179,33 +198,43 @@ def test_orb_estimators_custom_parameters():
 
 def test_orb_scale_estimator_detects_scale_with_zero_angle(
     synthetic_pattern_frame: Image,
+    cache: LayerCache,
 ):
     """Verify that OrbScaleEstimator resizes the incoming frame and preserves estimated scale."""
     scaled_arr = resize_image(synthetic_pattern_frame[...], scale=1.1)
     scaled_frame = Image(scaled_arr, synthetic_pattern_frame.format)
+    layer = Layer(scaled_frame)
 
     estimator = OrbScaleEstimator(max_features=2000, scale_threshold=0.0010)
-    estimate, returned_frame = estimator.estimate(synthetic_pattern_frame, scaled_frame)
+    estimate = estimator.estimate(synthetic_pattern_frame, layer, cache=cache)
 
     assert isinstance(estimate, MotionEstimate)
-    assert isinstance(returned_frame, Layer)
     assert estimate.angle == 0.0
     assert estimate.scale == pytest.approx(1.1, rel=0.05)
+
+    alignment = AlignmentResult(Region.from_size(10, 10), estimate)
+    ScaleHandler().apply(layer, alignment)
+    assert not cache.is_dirty(layer)
 
 
 def test_orb_rotation_estimator_detects_rotation(
     synthetic_pattern_frame: Image,
+    cache: LayerCache,
 ):
     """Verify that OrbRotationEstimator triggers rotation alignment and preserves estimated angle."""
     rotated_frame = transform_image(synthetic_pattern_frame, angle=5.0)
+    layer = Layer(rotated_frame)
 
     estimator = OrbRotationEstimator(max_features=2000, rotate_threshold=0.10)
-    estimate, returned_frame = estimator.estimate(synthetic_pattern_frame, rotated_frame)
+    estimate = estimator.estimate(synthetic_pattern_frame, layer, cache=cache)
 
     assert isinstance(estimate, MotionEstimate)
-    assert isinstance(returned_frame, Layer)
     assert abs(estimate.angle) == pytest.approx(5.0, abs=1.0)
     assert estimate.scale == pytest.approx(1.0, abs=0.05)
+
+    alignment = AlignmentResult(Region.from_size(10, 10), estimate)
+    RotationHandler().apply(layer, alignment)
+    assert not cache.is_dirty(layer)
 
 
 def test_orb_extract_matches_reuses_cached_ref(synthetic_pattern_frame: Image):
@@ -244,61 +273,58 @@ def distinct_pattern_frame() -> Image:
 def test_orb_transform_estimator_bypasses_transform_on_low_confidence(
     synthetic_pattern_frame: Image,
     distinct_pattern_frame: Image,
+    cache: LayerCache,
 ):
     """Verify that OrbTransformEstimator bypasses rotation and scaling when confidence is below threshold."""
     estimator = OrbTransformEstimator(
         max_features=2000,
         confidence_threshold=0.25,
     )
+    layer = Layer(distinct_pattern_frame)
 
-    estimate, returned_frame = estimator.estimate(
-        synthetic_pattern_frame, distinct_pattern_frame
-    )
+    estimate = estimator.estimate(synthetic_pattern_frame, layer, cache=cache)
 
     assert estimate.angle == 0.0
     assert estimate.scale == 1.0
     assert estimate.confidence < 0.25
-    assert len(returned_frame.edits) == 1
 
 
 def test_orb_scale_estimator_bypasses_scale_on_low_confidence(
     synthetic_pattern_frame: Image,
     distinct_pattern_frame: Image,
+    cache: LayerCache,
 ):
     """Verify that OrbScaleEstimator bypasses scaling when confidence is below threshold."""
     estimator = OrbScaleEstimator(
         max_features=2000,
         confidence_threshold=0.25,
     )
+    layer = Layer(distinct_pattern_frame)
 
-    estimate, returned_frame = estimator.estimate(
-        synthetic_pattern_frame, distinct_pattern_frame
-    )
+    estimate = estimator.estimate(synthetic_pattern_frame, layer, cache=cache)
 
     assert estimate.angle == 0.0
     assert estimate.scale == 1.0
     assert estimate.confidence < 0.25
-    assert len(returned_frame.edits) == 1
 
 
 def test_orb_rotation_estimator_bypasses_rotation_on_low_confidence(
     synthetic_pattern_frame: Image,
     distinct_pattern_frame: Image,
+    cache: LayerCache,
 ):
     """Verify that OrbRotationEstimator bypasses rotation when confidence is below threshold."""
     estimator = OrbRotationEstimator(
         max_features=2000,
         confidence_threshold=0.25,
     )
+    layer = Layer(distinct_pattern_frame)
 
-    estimate, returned_frame = estimator.estimate(
-        synthetic_pattern_frame, distinct_pattern_frame
-    )
+    estimate = estimator.estimate(synthetic_pattern_frame, layer, cache=cache)
 
     assert estimate.angle == 0.0
     assert estimate.scale == 1.0
     assert estimate.confidence < 0.25
-    assert len(returned_frame.edits) == 1
 
 
 def test_calculate_confidence_matches_ratio():
@@ -314,6 +340,7 @@ def test_calculate_confidence_matches_ratio():
 def test_orb_transform_estimator_rejects_degenerate_determinant(
     monkeypatch: pytest.MonkeyPatch,
     synthetic_pattern_frame: Image,
+    cache: LayerCache,
 ):
     """Verify that OrbTransformEstimator sets confidence to zero when affine determinant is non-positive."""
     estimator = OrbTransformEstimator(max_features=1000)
@@ -323,8 +350,9 @@ def test_orb_transform_estimator_rejects_degenerate_determinant(
         "estimateAffinePartial2D",
         lambda p1, p2: (degenerate_matrix, np.ones((len(p1), 1), dtype=np.uint8)),
     )
+    layer = Layer(synthetic_pattern_frame)
 
-    estimate, _ = estimator.estimate(synthetic_pattern_frame, synthetic_pattern_frame)
+    estimate = estimator.estimate(synthetic_pattern_frame, layer, cache=cache)
 
     assert estimate.confidence == 0.0
 
@@ -332,6 +360,7 @@ def test_orb_transform_estimator_rejects_degenerate_determinant(
 def test_orb_transform_estimator_rejects_scale_out_of_bounds(
     monkeypatch: pytest.MonkeyPatch,
     synthetic_pattern_frame: Image,
+    cache: LayerCache,
 ):
     """Verify that OrbTransformEstimator sets confidence to zero when detected scale is outside valid range."""
     estimator = OrbTransformEstimator(max_features=1000)
@@ -341,7 +370,8 @@ def test_orb_transform_estimator_rejects_scale_out_of_bounds(
         "estimateAffinePartial2D",
         lambda p1, p2: (huge_scale_matrix, np.ones((len(p1), 1), dtype=np.uint8)),
     )
+    layer = Layer(synthetic_pattern_frame)
 
-    estimate, _ = estimator.estimate(synthetic_pattern_frame, synthetic_pattern_frame)
+    estimate = estimator.estimate(synthetic_pattern_frame, layer, cache=cache)
 
     assert estimate.confidence == 0.0

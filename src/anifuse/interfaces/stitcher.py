@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 
 from anicrop.enums import BlendMode, InterpMode
 
+from anifuse.interfaces.view_policy import AlignmentResult
+
 if TYPE_CHECKING:
     from anicrop.image import Image
     from anicrop.layer import Layer
@@ -18,7 +20,6 @@ if TYPE_CHECKING:
     from anifuse.interfaces.effect import AnifuseEffect
     from anifuse.interfaces.estimator import MotionEstimate
     from anifuse.interfaces.reader import FrameReader
-    from anifuse.interfaces.view_policy import AlignmentResult
 
 
 @dataclass(frozen=True)
@@ -41,7 +42,7 @@ class StackOrder(StrEnum):
     BOTH = "both"
 
 
-ProgressCallback = Callable[[int, int, "AlignmentResult"], None]
+ProgressCallback = Callable[[int, int, AlignmentResult], None]
 
 
 class FrameAccumulator(ABC):

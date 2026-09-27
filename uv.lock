@@ -8,8 +8,8 @@ resolution-markers = [
 
 [[package]]
 name = "anicrop"
-version = "0.6.4"
-source = { git = "https://github.com/turpek/anicrop.git?branch=main#485010ec9880ec699513612fd6b34d01f4d2caeb" }
+version = "0.7.0"
+source = { git = "https://github.com/turpek/anicrop.git?branch=main#f4a6213ec48fcaed877a396e5f16954470259dcf" }
 dependencies = [
     { name = "imagesize" },
     { name = "numpy" },
@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "anifuse"
-version = "0.1.6"
+version = "0.1.7"
 source = { editable = "." }
 dependencies = [
     { name = "anicrop" },
@@ -63,8 +63,8 @@ dev = [
 
 [[package]]
 name = "aniseek"
-version = "0.1.0"
-source = { git = "https://github.com/turpek/aniseek.git?branch=main#f1b0662ce051b9914ded0017d120fc1888f2a713" }
+version = "0.2.0a0"
+source = { git = "https://github.com/turpek/aniseek.git?branch=main#63e8d8b8e85b3d6f42f6cb60d48176c67e7bfa37" }
 dependencies = [
     { name = "loguru" },
     { name = "numpy" },

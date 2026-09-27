@@ -4,8 +4,10 @@ from collections.abc import Iterable
 
 import numpy as np
 import pytest
+from anicrop.cache import AbstractLayerCache, LayerCache
 from anicrop.enums import ImageFormat
 from anicrop.image import Image
+from anicrop.layer import Layer
 from anicrop.spatial import Region
 
 from anifuse.interfaces import (
@@ -22,15 +24,15 @@ class _DummyConcretePolicy(ViewPolicy):
 
     def resolve(
         self,
-        base: Image,
-        incoming: Image,
+        base: Layer,
+        incoming: Layer,
         sections: Iterable[Section],
+        cache: AbstractLayerCache,
         frame_idx: int = 0,
-    ) -> tuple[AlignmentResult, Image]:
+    ) -> AlignmentResult:
         for sec in sections:
-            return (
-                AlignmentResult(ref=sec.ref, motion=MotionEstimate(dx=10.0, dy=5.0)),
-                incoming,
+            return AlignmentResult(
+                ref=sec.ref, motion=MotionEstimate(dx=10.0, dy=5.0)
             )
         raise AlignmentError("No sections available")
 
@@ -92,17 +94,16 @@ def test_view_policy_cannot_be_instantiated_directly():
 
 def test_concrete_view_policy_implements_resolve_protocol():
     """Verify that a concrete ViewPolicy subclass can resolve an alignment."""
-    base_img = Image(np.zeros((100, 100, 3), dtype=np.uint8), ImageFormat.RGB)
-    incoming_img = Image(np.zeros((50, 50, 3), dtype=np.uint8), ImageFormat.RGB)
+    base_layer = Layer(Image(np.zeros((100, 100, 3), dtype=np.uint8), ImageFormat.RGB))
+    incoming_layer = Layer(Image(np.zeros((50, 50, 3), dtype=np.uint8), ImageFormat.RGB))
+    cache = LayerCache()
     sec = Section(
         ref=Region.from_rect(0, 0, 50, 50), view=Region.from_rect(0, 0, 50, 50)
     )
 
     policy = _DummyConcretePolicy()
-    alignment, returned_img = policy.resolve(base_img, incoming_img, [sec])
+    alignment = policy.resolve(base_layer, incoming_layer, [sec], cache=cache)
 
     assert isinstance(alignment, AlignmentResult)
-    assert isinstance(returned_img, Image)
-    assert returned_img is incoming_img
     assert alignment.ref == sec.ref
     assert alignment.motion.dx == 10.0

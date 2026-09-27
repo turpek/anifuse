@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from anicrop.cache import LayerCache
 from anicrop.effect import Effect
 from anicrop.enums import ImageFormat
 from anicrop.image import Image
@@ -43,6 +44,12 @@ class _TrackingEffect(AnifuseEffect):
 
 
 @pytest.fixture
+def cache() -> LayerCache:
+    """Return a fresh LayerCache instance for testing."""
+    return LayerCache()
+
+
+@pytest.fixture
 def red_layer() -> Layer:
     """Return a 100x100 solid red layer located at (0, 0)."""
     arr = np.zeros((100, 100, 4), dtype=np.uint8)
@@ -75,11 +82,11 @@ def _make_context(
 
 
 def test_first_on_top_accumulator_keeps_base_pixels(
-    red_layer: Layer, blue_layer: Layer
+    red_layer: Layer, blue_layer: Layer, cache: LayerCache
 ):
     """Verify that FirstOnTopAccumulator preserves initial frame pixels in overlap regions."""
     motion = MotionEstimate(dx=50.0, dy=50.0, confidence=1.0)
-    accumulator = FirstOnTopAccumulator(red_layer)
+    accumulator = FirstOnTopAccumulator(red_layer, cache=cache)
     accumulator.push(_make_context(red_layer, blue_layer, motion))
     result_img = accumulator.result()
     arr = result_img[...]
@@ -90,11 +97,11 @@ def test_first_on_top_accumulator_keeps_base_pixels(
 
 
 def test_last_on_top_accumulator_overwrites_with_incoming_pixels(
-    red_layer: Layer, blue_layer: Layer
+    red_layer: Layer, blue_layer: Layer, cache: LayerCache
 ):
     """Verify that LastOnTopAccumulator overwrites overlap regions with incoming frame pixels."""
     motion = MotionEstimate(dx=50.0, dy=50.0, confidence=1.0)
-    accumulator = LastOnTopAccumulator(red_layer)
+    accumulator = LastOnTopAccumulator(red_layer, cache=cache)
     accumulator.push(_make_context(red_layer, blue_layer, motion))
     result_img = accumulator.result()
     arr = result_img[...]
@@ -105,11 +112,11 @@ def test_last_on_top_accumulator_overwrites_with_incoming_pixels(
 
 
 def test_dual_accumulator_produces_both_composites(
-    red_layer: Layer, blue_layer: Layer
+    red_layer: Layer, blue_layer: Layer, cache: LayerCache
 ):
     """Verify that DualAccumulator outputs both first-on-top and last-on-top composites."""
     motion = MotionEstimate(dx=50.0, dy=50.0, confidence=1.0)
-    accumulator = DualAccumulator(red_layer)
+    accumulator = DualAccumulator(red_layer, cache=cache)
     accumulator.push(_make_context(red_layer, blue_layer, motion))
     first_img, last_img = accumulator.result()
 
@@ -129,19 +136,21 @@ def test_dual_accumulator_produces_both_composites(
     ids=["first_on_top", "last_on_top", "both"],
 )
 def test_create_accumulator_instantiates_correct_type(
-    red_layer: Layer, order: StackOrder, expected_cls: type
+    red_layer: Layer, cache: LayerCache, order: StackOrder, expected_cls: type
 ):
     """Verify that create_accumulator factory maps each StackOrder to its corresponding class."""
-    accumulator = create_accumulator(order, red_layer)
+    accumulator = create_accumulator(order, red_layer, cache=cache)
 
     assert isinstance(accumulator, expected_cls)
     assert accumulator.reference_layer is not None
 
 
-def test_create_accumulator_raises_on_invalid_order(red_layer: Layer):
+def test_create_accumulator_raises_on_invalid_order(
+    red_layer: Layer, cache: LayerCache
+):
     """Verify that create_accumulator raises ValueError on unsupported orders."""
     with pytest.raises(ValueError):
-        create_accumulator("invalid_order", red_layer)  # type: ignore[arg-type]
+        create_accumulator("invalid_order", red_layer, cache=cache)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(
@@ -182,13 +191,14 @@ def test_apply_effects_updates_and_binds_to_target_layers(
 def test_accumulator_push_passes_correct_layer_order_to_effects(
     red_layer: Layer,
     blue_layer: Layer,
+    cache: LayerCache,
     accumulator_cls: type[FirstOnTopAccumulator | LastOnTopAccumulator],
     expected_top_name: str,
     expected_bottom_name: str,
 ):
     """Verify that accumulators pass semantic top and bottom layers to effect.update on push."""
     effect = _TrackingEffect(target=LayerTarget.TOP)
-    accumulator = accumulator_cls(red_layer, effects=[effect])
+    accumulator = accumulator_cls(red_layer, cache=cache, effects=[effect])
     motion = MotionEstimate(dx=50.0, dy=50.0, confidence=1.0)
 
     accumulator.push(_make_context(red_layer, blue_layer, motion))
@@ -197,3 +207,16 @@ def test_accumulator_push_passes_correct_layer_order_to_effects(
     assert effect.recorded_bottom is not None
     assert effect.recorded_top.name == expected_top_name
     assert effect.recorded_bottom.name == expected_bottom_name
+
+
+def test_accumulator_push_unregisters_incoming_layer(
+    red_layer: Layer, blue_layer: Layer, cache: LayerCache
+):
+    """Verify that accumulator.push unregisters incoming layer from cache after flatten."""
+    cache.register(blue_layer)
+    accumulator = FirstOnTopAccumulator(red_layer, cache=cache)
+    motion = MotionEstimate(dx=50.0, dy=50.0, confidence=1.0)
+
+    accumulator.push(_make_context(red_layer, blue_layer, motion))
+
+    assert cache.is_dirty(blue_layer)

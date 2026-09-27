@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
+    from anicrop.cache import AbstractLayerCache
     from anicrop.image import Image
     from anicrop.layer import Layer
 
@@ -29,17 +30,19 @@ class Estimator(ABC):
     def estimate(
         self,
         ref: Image,
-        incoming: Image,
+        layer: Layer,
+        cache: AbstractLayerCache,
         mask: np.ndarray | None = None,
-    ) -> tuple[MotionEstimate, Layer]:
-        """Estimate relative motion between reference and incoming images.
+    ) -> MotionEstimate:
+        """Estimate relative motion between reference and incoming layer, caching bakes when warped.
 
         Args:
             ref: Reference image (e.g. active view from canvas).
-            incoming: Incoming image.
+            layer: Incoming layer containing raw image to align and bake.
+            cache: Layer cache for registering pre-transformed warps.
             mask: Optional single-channel uint8 exclusion mask.
 
         Returns:
-            A tuple of (MotionEstimate, processed_incoming_layer).
+            The estimated MotionEstimate.
         """
         pass

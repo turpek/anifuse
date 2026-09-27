@@ -18,7 +18,7 @@ from anifuse.interfaces import (
 from anifuse.mask import DefaultMaskView
 
 if TYPE_CHECKING:
-    from anicrop.image import Image
+    from anicrop.cache import AbstractLayerCache
     from anicrop.layer import Layer
 
     from anifuse.interfaces import Estimator, MaskView
@@ -145,22 +145,25 @@ class AdaptiveViewPolicy(ViewPolicy):
 
     def resolve(
         self,
-        base: Image,
-        incoming: Image,
+        base: Layer,
+        incoming: Layer,
         sections: Iterable[Section],
+        cache: AbstractLayerCache,
         frame_idx: int = 0,
-    ) -> tuple[AlignmentResult, Layer]:
+    ) -> AlignmentResult:
         """Resolve frame alignment by returning the first candidate section meeting confidence threshold."""
-        incoming_img, mask_arr = self._mask_view.get_mask(incoming, frame_idx)
+        base_img = base.edits[0].image
+        incoming_raw = incoming.edits[0].image
+        _, mask_arr = self._mask_view.get_mask(incoming_raw, frame_idx)
 
         for section in sections:
-            ref_view = base.view(section.view)
-            motion, ready_image = self._estimator.estimate(
-                ref_view, incoming_img, mask=mask_arr
+            ref_view = base_img.view(section.view)
+            motion = self._estimator.estimate(
+                ref_view, incoming, cache=cache, mask=mask_arr
             )
 
             if motion.confidence >= self._confidence_threshold:
-                return AlignmentResult(ref=section.ref, motion=motion), ready_image
+                return AlignmentResult(ref=section.ref, motion=motion)
 
         raise AlignmentError(
             f"Frame {frame_idx} could not be aligned: no candidate section reached confidence threshold {self._confidence_threshold}."
