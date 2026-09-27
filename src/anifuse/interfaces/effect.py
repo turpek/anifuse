@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from anicrop.effect import Effect
+from anicrop.effect import DynamicEffect
 
 from anifuse.interfaces.stitcher import StitchContext
 
@@ -38,7 +38,7 @@ class BorderSide(str, Enum):
     BOTTOM = "bottom"
 
 
-class AnifuseEffect(Effect, ABC):
+class AnifuseEffect(DynamicEffect, ABC):
     """Abstract base class for anifuse-aware effects that update based on top and bottom layers."""
 
     target: LayerTarget

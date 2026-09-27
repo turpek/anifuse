@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 import pytest
 from anicrop import transform_image
+from anicrop.cache import AbstractLayerCache
 from anicrop.enums import ImageFormat
 from anicrop.image import Image
 from anicrop.layer import Layer
@@ -63,14 +64,15 @@ class _MockViewPolicy(ViewPolicy):
 
     def resolve(
         self,
-        base: Image,
-        incoming: Image,
+        base: Layer,
+        incoming: Layer,
         sections: Iterable[Section],
+        cache: AbstractLayerCache,
         frame_idx: int = 0,
-    ) -> tuple[AlignmentResult, Layer]:
+    ) -> AlignmentResult:
         first_section = next(iter(sections))
         motion = MotionEstimate(dx=self.dx, dy=self.dy, confidence=0.99)
-        return AlignmentResult(ref=first_section.ref, motion=motion), Layer(incoming)
+        return AlignmentResult(ref=first_section.ref, motion=motion)
 
 
 class _FailingAtFrameViewPolicy(ViewPolicy):
@@ -81,16 +83,17 @@ class _FailingAtFrameViewPolicy(ViewPolicy):
 
     def resolve(
         self,
-        base: Image,
-        incoming: Image,
+        base: Layer,
+        incoming: Layer,
         sections: Iterable[Section],
+        cache: AbstractLayerCache,
         frame_idx: int = 0,
-    ) -> tuple[AlignmentResult, Layer]:
+    ) -> AlignmentResult:
         if frame_idx == self.fail_at:
             raise AlignmentError(f"Confidence below threshold for frame {frame_idx}")
         first_section = next(iter(sections))
         motion = MotionEstimate(dx=20.0, dy=0.0, confidence=0.99)
-        return AlignmentResult(ref=first_section.ref, motion=motion), Layer(incoming)
+        return AlignmentResult(ref=first_section.ref, motion=motion)
 
 
 @pytest.fixture

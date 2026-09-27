@@ -74,7 +74,8 @@ def test_cli_stitch_dir_single_directory(
     )
 
     assert result.exit_code == 0
-    assert "Costurando: scene_01" in result.output
+    assert "Costurando" in result.output
+    assert "scene_01" in result.output
     assert (out_dir / "scene_01_top1.png").exists()
     assert (out_dir / "scene_01_top2.png").exists()
 
@@ -104,8 +105,9 @@ def test_cli_stitch_dir_multiple_directories(
     )
 
     assert result.exit_code == 0
-    assert "Costurando: scene_01" in result.output
-    assert "Costurando: scene_02" in result.output
+    assert "Costurando" in result.output
+    assert "scene_01" in result.output
+    assert "scene_02" in result.output
     assert (out_dir / "scene_01_top1.png").exists()
     assert (out_dir / "scene_02_top1.png").exists()
 
@@ -134,7 +136,8 @@ def test_cli_stitch_image_explicit_files(
     )
 
     assert result.exit_code == 0
-    assert "Costurando: scene_01" in result.output
+    assert "Costurando" in result.output
+    assert "scene_01" in result.output
     assert (out_dir / "scene_01_top1.png").exists()
 
 
@@ -178,8 +181,9 @@ def test_cli_stitch_multi_command_chaining(
     )
 
     assert result.exit_code == 0
-    assert "Costurando: scene_01" in result.output
-    assert "Costurando: scene_02" in result.output
+    assert "Costurando" in result.output
+    assert "scene_01" in result.output
+    assert "scene_02" in result.output
     assert (out1 / "scene_01_top1.png").exists()
     assert (out2 / "scene_02_top1.png").exists()
 

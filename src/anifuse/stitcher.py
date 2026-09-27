@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Self
 
+from anicrop.cache import LayerCache
 from anicrop.enums import BlendMode, InterpMode
 from anicrop.image import Image
 from anicrop.layer import Layer
@@ -23,8 +24,6 @@ from anifuse.interfaces.view_policy import AlignmentError
 from anifuse.view_policy import AdaptiveViewPolicy, CrossSections
 
 if TYPE_CHECKING:
-    from anicrop.spatial import Region
-
     from anifuse.interfaces.effect import AnifuseEffect
     from anifuse.interfaces.estimator import Estimator
     from anifuse.interfaces.handler import TransformHandler
@@ -115,8 +114,13 @@ class SceneStitcher(Stitcher):
             name=f"frame_{first_frame.idx}",
             blend_mode=blend_mode,
         )
+        cache = LayerCache()
         accumulator = create_accumulator(
-            stack_order, initial_layer, interp=interp, effects=effects
+            stack_order,
+            initial_layer,
+            cache=cache,
+            interp=interp,
+            effects=effects,
         )
         last_region: Region = initial_layer.global_region
         aligned_count = 1
@@ -125,11 +129,19 @@ class SceneStitcher(Stitcher):
             sections = sections_cls(
                 accumulator.reference_layer.global_region, last_region
             )
+            layer1 = accumulator.reference_layer
+            layer2 = Layer(
+                frame.image,
+                name=f"frame_{frame.idx}",
+                blend_mode=blend_mode,
+            )
+            cache.register(layer2)
             try:
-                alignment, layer2 = self.view_policy.resolve(
-                    base=accumulator.reference_layer.edits[0].image,
-                    incoming=frame.image,
+                alignment = self.view_policy.resolve(
+                    base=layer1,
+                    incoming=layer2,
                     sections=sections,
+                    cache=cache,
                     frame_idx=frame.idx,
                 )
             except AlignmentError as err:
@@ -140,8 +152,6 @@ class SceneStitcher(Stitcher):
                     partial_result=accumulator.result(),
                 ) from err
 
-            layer2.name = f"frame_{frame.idx}"
-            layer2.blend_mode = blend_mode
             for handler in self.handlers:
                 handler.apply(layer2, alignment)
 

@@ -12,6 +12,7 @@ from anifuse.interfaces.effect import AnifuseEffect, LayerTarget
 from anifuse.interfaces.stitcher import FrameAccumulator, StackOrder, StitchContext
 
 if TYPE_CHECKING:
+    from anicrop.cache import AbstractLayerCache
     from anicrop.image import Image
     from anicrop.layer import Layer
 
@@ -39,11 +40,13 @@ class FirstOnTopAccumulator(FrameAccumulator):
     def __init__(
         self,
         base_layer: Layer,
+        cache: AbstractLayerCache,
         interp: InterpMode = InterpMode.LANCZOS,
         effects: Sequence[AnifuseEffect] = (),
     ) -> None:
-        """Initialize accumulator with base layer, interpolation mode, and effects."""
+        """Initialize accumulator with base layer, layer cache, interpolation mode, and effects."""
         self._base = base_layer
+        self._cache = cache
         self._interp = interp
         self._effects = tuple(effects)
 
@@ -51,9 +54,10 @@ class FirstOnTopAccumulator(FrameAccumulator):
         """Flatten incoming layer underneath the accumulated canvas with effects applied."""
         top, bottom = self._base, context.incoming
         apply_effects(top, bottom, self._effects)
-        self._base = flatten([bottom, top], interp=self._interp)
+        self._base = flatten([bottom, top], interp=self._interp, cache=self._cache)
         top.clear_effects()
         bottom.clear_effects()
+        self._cache.unregister(context.incoming)
 
     @property
     def reference_layer(self) -> Layer:
@@ -71,11 +75,13 @@ class LastOnTopAccumulator(FrameAccumulator):
     def __init__(
         self,
         base_layer: Layer,
+        cache: AbstractLayerCache,
         interp: InterpMode = InterpMode.LANCZOS,
         effects: Sequence[AnifuseEffect] = (),
     ) -> None:
-        """Initialize accumulator with base layer, interpolation mode, and effects."""
+        """Initialize accumulator with base layer, layer cache, interpolation mode, and effects."""
         self._base = base_layer
+        self._cache = cache
         self._interp = interp
         self._effects = tuple(effects)
 
@@ -83,9 +89,10 @@ class LastOnTopAccumulator(FrameAccumulator):
         """Flatten incoming layer on top of the accumulated canvas with effects applied."""
         top, bottom = context.incoming, self._base
         apply_effects(top, bottom, self._effects)
-        self._base = flatten([bottom, top], interp=self._interp)
+        self._base = flatten([bottom, top], interp=self._interp, cache=self._cache)
         top.clear_effects()
         bottom.clear_effects()
+        self._cache.unregister(context.incoming)
 
     @property
     def reference_layer(self) -> Layer:
@@ -103,26 +110,28 @@ class DualAccumulator(FrameAccumulator):
     def __init__(
         self,
         base_layer: Layer,
+        cache: AbstractLayerCache,
         interp: InterpMode = InterpMode.LANCZOS,
         effects: Sequence[AnifuseEffect] = (),
     ) -> None:
-        """Initialize accumulator with base layer and effects."""
+        """Initialize accumulator with base layer, layer cache, and effects."""
         self._first_on_top = base_layer
         self._last_on_top = base_layer
+        self._cache = cache
         self._interp = interp
         self._effects = tuple(effects)
 
     def _flatten_first_on_top(self, context: StitchContext) -> None:
         top, bottom = self._first_on_top, context.incoming
         apply_effects(top, bottom, self._effects)
-        self._first_on_top = flatten([bottom, top], interp=self._interp)
+        self._first_on_top = flatten([bottom, top], interp=self._interp, cache=self._cache)
         top.clear_effects()
         bottom.clear_effects()
 
     def _flatten_last_on_top(self, context: StitchContext) -> None:
         top, bottom = context.incoming, self._last_on_top
         apply_effects(top, bottom, self._effects)
-        self._last_on_top = flatten([bottom, top], interp=self._interp)
+        self._last_on_top = flatten([bottom, top], interp=self._interp, cache=self._cache)
         top.clear_effects()
         bottom.clear_effects()
 
@@ -130,6 +139,7 @@ class DualAccumulator(FrameAccumulator):
         """Update both first-on-top and last-on-top composites with isolated effects."""
         self._flatten_first_on_top(context)
         self._flatten_last_on_top(context)
+        self._cache.unregister(context.incoming)
 
     @property
     def reference_layer(self) -> Layer:
@@ -144,14 +154,21 @@ class DualAccumulator(FrameAccumulator):
 def create_accumulator(
     order: StackOrder,
     initial_layer: Layer,
+    cache: AbstractLayerCache,
     interp: InterpMode = InterpMode.LANCZOS,
     effects: Sequence[AnifuseEffect] = (),
 ) -> FrameAccumulator:
     """Factory creating the appropriate FrameAccumulator for the given StackOrder."""
     if order == StackOrder.FIRST_ON_TOP:
-        return FirstOnTopAccumulator(initial_layer, interp=interp, effects=effects)
+        return FirstOnTopAccumulator(
+            initial_layer, cache=cache, interp=interp, effects=effects
+        )
     if order == StackOrder.LAST_ON_TOP:
-        return LastOnTopAccumulator(initial_layer, interp=interp, effects=effects)
+        return LastOnTopAccumulator(
+            initial_layer, cache=cache, interp=interp, effects=effects
+        )
     if order == StackOrder.BOTH:
-        return DualAccumulator(initial_layer, interp=interp, effects=effects)
+        return DualAccumulator(
+            initial_layer, cache=cache, interp=interp, effects=effects
+        )
     raise ValueError(f"Unknown StackOrder: {order}")
